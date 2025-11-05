@@ -17,7 +17,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, List
 
 import gymnasium as gym
 import numpy as np
@@ -109,17 +109,83 @@ class HandCameraWrapper(gym.Wrapper):
 
 
 def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) -> gym.Env:
-    base_env = gym.make(
-        "PickPlace-CRANE-X7",
-        render_mode="rgb_array",
-        sim_backend=sim_backend,
-        render_backend=render_backend,
-        robot_uids=CraneX7.uid,
-        obs_mode="rgb",
+    """Create a PickPlace environment, gracefully falling back between GPU/CPU backends."""
+
+    def normalize(value: str | None) -> str:
+        return (value or "auto").lower()
+
+    requested_sim = normalize(sim_backend)
+    requested_render = normalize(render_backend)
+
+    def resolve_render(sim_choice: str) -> str:
+        if requested_render == "auto":
+            return "gpu" if sim_choice not in {"cpu", "physx_cpu"} else "cpu"
+        return requested_render
+
+    candidate_pairs: List[Tuple[str, str]] = []
+    seen_pairs = set()
+
+    def add_candidate(sim_choice: str, render_choice: str) -> None:
+        sim_key = normalize(sim_choice)
+        render_key = normalize(render_choice)
+        if render_key == "auto":
+            render_key = resolve_render(sim_key)
+        pair = (sim_key, render_key)
+        if pair not in seen_pairs:
+            seen_pairs.add(pair)
+            candidate_pairs.append(pair)
+
+    if requested_sim == "auto":
+        for sim_option in ("gpu", "cuda", "cpu"):
+            add_candidate(sim_option, resolve_render(sim_option))
+    else:
+        add_candidate(requested_sim, resolve_render(requested_sim))
+        if requested_sim not in {"cpu", "physx_cpu"}:
+            add_candidate("cpu", "cpu")
+
+    errors: List[Tuple[str, str, Exception]] = []
+    for sim_option, render_option in candidate_pairs:
+        try:
+            base_env = gym.make(
+                "PickPlace-CRANE-X7",
+                render_mode="rgb_array",
+                sim_backend=sim_option,
+                render_backend=render_option,
+                robot_uids=CraneX7.uid,
+                obs_mode="rgb",
+            )
+            wrapped_env = HandCameraWrapper(base_env, image_size=image_size)
+            wrapped_env.reset(seed=seed)
+            setattr(wrapped_env, "resolved_sim_backend", sim_option)
+            setattr(wrapped_env, "resolved_render_backend", render_option)
+
+            if requested_sim == "auto":
+                print(f"Using ManiSkill backend sim={sim_option}, render={render_option} (auto).")
+            else:
+                requested_pair = (requested_sim, resolve_render(requested_sim))
+                if (sim_option, render_option) != requested_pair:
+                    print(
+                        "Requested ManiSkill backend "
+                        f"sim_backend={sim_backend} render_backend={render_backend} unavailable; "
+                        f"falling back to sim_backend={sim_option} render_backend={render_option}."
+                    )
+                else:
+                    print(f"Using ManiSkill backend sim={sim_option}, render={render_option}.")
+
+            return wrapped_env
+        except Exception as exc:
+            errors.append((sim_option, render_option, exc))
+
+    attempted = "\n".join(
+        f"  sim_backend={sim} render_backend={render}: {repr(err)}" for sim, render, err in errors
     )
-    wrapped_env = HandCameraWrapper(base_env, image_size=image_size)
-    wrapped_env.reset(seed=seed)
-    return wrapped_env
+    error_message = (
+        "Failed to initialize ManiSkill PickPlace environment.\n"
+        "Attempted backend combinations:\n"
+        f"{attempted}"
+    )
+    last_exception = errors[-1][2] if errors else None
+    raise RuntimeError(error_message) from last_exception
 
 
 def set_seed(seed: int) -> None:
@@ -884,8 +950,8 @@ def parse_args():
     parser.add_argument("--log-freq", type=int, default=100)
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--save-path", type=str, default="dreamer_agent.pth")
-    parser.add_argument("--sim-backend", type=str, default="gpu")
-    parser.add_argument("--render-backend", type=str, default="gpu")
+    parser.add_argument("--sim-backend", type=str, default="auto")
+    parser.add_argument("--render-backend", type=str, default="auto")
     parser.add_argument("--image-size", type=int, default=64)
     return parser.parse_args()
 

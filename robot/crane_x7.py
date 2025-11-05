@@ -1,5 +1,6 @@
 import sapien
 import numpy as np
+from pathlib import Path
 from mani_skill.agents.base_agent import BaseAgent, Keyframe
 from mani_skill.agents.controllers import *
 from mani_skill.agents.registration import register_agent
@@ -9,7 +10,7 @@ from mani_skill.sensors.camera import CameraConfig
 @register_agent()
 class CraneX7(BaseAgent):
     uid = "CRANE-X7"
-    mjcf_path = "crane_x7.xml"
+    mjcf_path = str(Path(__file__).resolve().with_name("crane_x7.xml"))
 
     keyframes = dict(
         rest=Keyframe(
