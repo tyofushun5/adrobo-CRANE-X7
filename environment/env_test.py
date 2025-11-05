@@ -1,27 +1,17 @@
-from pathlib import Path
-import sys
+import os
 from typing import Any, Mapping
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
-try:
-    import torch
-except ImportError:  # torch is optional for just visualizing frames
-    torch = None
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from environment import environment  # noqa: F401
+import environment
 from robot.crane_x7 import CraneX7
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
-def to_hwc_image(frame: Any) -> np.ndarray:
-    """Convert ManiSkill render output into an image Matplotlib can show."""
+def to_hwc_image(frame: Any):
     if isinstance(frame, (list, tuple)):
         frame = frame[0]
 
@@ -42,8 +32,7 @@ def to_hwc_image(frame: Any) -> np.ndarray:
     return frame
 
 
-def get_hand_camera_rgb(obs: Mapping[str, Any]) -> np.ndarray:
-    """Extract the CRANE-X7 hand camera RGB observation."""
+def get_hand_camera_rgb(obs: Mapping[str, Any]):
     sensor_data = obs.get("sensor_data", {})
     if "hand_camera" not in sensor_data:
         raise KeyError("hand_camera data not found in observation.")
@@ -54,7 +43,7 @@ def get_hand_camera_rgb(obs: Mapping[str, Any]) -> np.ndarray:
 
 
 def main():
-    CraneX7.mjcf_path = str((PROJECT_ROOT / "robot" / "crane_x7.xml").resolve())
+    CraneX7.mjcf_path = os.path.abspath(os.path.join(PROJECT_ROOT, "robot", "crane_x7.xml"))
     env = gym.make(
         "PickPlace-CRANE-X7",
         render_mode="rgb_array",

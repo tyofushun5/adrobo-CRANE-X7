@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in os.sys.path:
     os.sys.path.insert(0, str(PROJECT_ROOT))
 
-import dreamer_pickplace as dp  # noqa: E402
+from train import dreamer_pickplace as dp
 
 # Allow torch.load on checkpoints created when dreamer_pickplace.py was run as __main__
 os.sys.modules["__main__"] = dp
