@@ -1,14 +1,3 @@
-"""
-Dreamer-style world model training on ManiSkill PickPlace (CRANE-X7) using the hand camera only.
-
-This script adapts the Dreamer baseline from
-`first_competition/2025_WorldModel_Competition_Baseline_windows.ipynb`
-to the ManiSkill PickPlace task. Observations are restricted to the CRANE-X7
-hand camera RGB stream, downsampled to 64x64.
-"""
-
-from __future__ import annotations
-
 import argparse
 import math
 import os
@@ -44,8 +33,8 @@ if not TMP_DIR.exists():
 for env_key in ("TMPDIR", "TEMP", "TMP"):
     os.environ.setdefault(env_key, str(TMP_DIR))
 
-from environment import environment as pickplace_env  # noqa: E402,F401
-from robot.crane_x7 import CraneX7  # noqa: E402
+from environment import environment as pickplace_env
+from robot.crane_x7 import CraneX7
 
 
 def to_numpy(array: Any) -> np.ndarray:
@@ -581,7 +570,7 @@ class Agent(nn.Module):
 @dataclass
 class Config:
     buffer_size: int = 200_000
-    batch_size: int = 64
+    batch_size: int = 32
     seq_length: int = 50
     imagination_horizon: int = 15
     state_dim: int = 20

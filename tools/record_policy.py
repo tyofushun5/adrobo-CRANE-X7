@@ -1,16 +1,5 @@
-"""
-Record a rollout of the PickPlace-CRANE-X7 policy (Dreamer or random fallback).
-
-Example
--------
-TMPDIR=$PWD python record_policy.py --output policy_rollout.mp4
-"""
-
-from __future__ import annotations
-
 import argparse
 import os
-from pathlib import Path
 from typing import Optional
 
 import gymnasium as gym
@@ -18,18 +7,15 @@ import imageio.v2 as imageio
 import numpy as np
 import torch
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in os.sys.path:
-    os.sys.path.insert(0, str(PROJECT_ROOT))
-
 from train import dreamer_pickplace as dp
 
-# Allow torch.load on checkpoints created when dreamer_pickplace.py was run as __main__
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.sys.modules["__main__"] = dp
 
 
-def load_agent(checkpoint: Path) -> Optional[dp.Agent]:
-    if not checkpoint.exists():
+def load_agent(checkpoint: str) -> Optional[dp.Agent]:
+    if not os.path.exists(checkpoint):
         return None
     obj = torch.load(checkpoint, map_location="cpu")
     if obj is None:
@@ -50,7 +36,7 @@ def to_frame_array(frame) -> np.ndarray:
     return np.asarray(frame)
 
 
-def record_episode(agent: Optional[dp.Agent], output: Path, steps: int, fps: int) -> None:
+def record_episode(agent: Optional[dp.Agent], output: str, steps: int, fps: int) -> None:
     base_env = gym.make(
         "PickPlace-CRANE-X7",
         render_mode="rgb_array",
@@ -78,7 +64,9 @@ def record_episode(agent: Optional[dp.Agent], output: Path, steps: int, fps: int
         if terminated or truncated:
             break
 
-    output.parent.mkdir(parents=True, exist_ok=True)
+    output_dir = os.path.dirname(output)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
     with imageio.get_writer(output, fps=fps) as writer:
         for frame in frames:
             writer.append_data(frame)
@@ -88,10 +76,10 @@ def record_episode(agent: Optional[dp.Agent], output: Path, steps: int, fps: int
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Record PickPlace-CRANE-X7 policy rollout.")
-    parser.add_argument("--checkpoint", type=Path, default=Path("dreamer_agent.pth"))
-    parser.add_argument("--output", type=Path, default=Path("policy_videos/policy_rollout.mp4"))
-    parser.add_argument("--steps", type=int, default=200)
-    parser.add_argument("--fps", type=int, default=20)
+    parser.add_argument("--checkpoint", type=str, default="dreamer_agent.pth")
+    parser.add_argument("--output", type=str, default="policy_videos/policy_rollout.mp4")
+    parser.add_argument("--steps", type=int, default=10000)
+    parser.add_argument("--fps", type=int, default=60)
     return parser.parse_args()
 
 
@@ -102,13 +90,7 @@ def main():
         os.environ["TMPDIR"] = str(PROJECT_ROOT)
 
     agent = load_agent(args.checkpoint)
-    if agent is None:
-        print(f"[INFO] No valid checkpoint at {args.checkpoint}. Falling back to random actions.")
-    else:
-        print(f"[INFO] Loaded policy from {args.checkpoint}.")
-
     record_episode(agent, args.output, steps=args.steps, fps=args.fps)
-    print(f"[INFO] Saved rollout video to {args.output.resolve()}")
 
 
 if __name__ == "__main__":

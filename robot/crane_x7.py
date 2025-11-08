@@ -15,7 +15,7 @@ class CraneX7(BaseAgent):
     keyframes = dict(
         rest=Keyframe(
             qpos=np.array(
-                [0.0, np.pi / 8, 0, -np.pi * 5 / 8, 0, -np.pi / 4, np.pi / 2, 0.0, 0.0]
+                [0.0, np.pi / 8, 0, -np.pi * 5 / 8, 0, -np.pi / 2, np.pi / 2, 0.0, 0.0]
             ),
             pose=sapien.Pose(),
         )
