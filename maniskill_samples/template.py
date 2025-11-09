@@ -1,5 +1,5 @@
 """
-Code for a minimal environment/task with just a robot being loaded. We recommend copying this template and modifying as you need.
+Code for a minimal envs/task with just a robot being loaded. We recommend copying this template and modifying as you need.
 
 At a high-level, ManiSkill tasks can minimally be defined by what agents/actors are
 loaded, how agents/actors are randomly initialized during env resets, how goals are randomized and parameterized in observations, and success conditions
@@ -7,12 +7,12 @@ loaded, how agents/actors are randomly initialized during env resets, how goals 
 Environment reset is comprised of running two functions, `self._reconfigure` and `self.initialize_episode`, which is auto
 run by ManiSkill. As a user, you can override a number of functions that affect reconfiguration and episode initialization.
 
-Reconfiguration will reset the entire environment scene and allow you to load/swap assets and agents.
+Reconfiguration will reset the entire envs scene and allow you to load/swap assets and agents.
 
 Episode initialization will reset the poses of all actors, articulations, and agents,
 in addition to initializing any task relevant data like a goal
 
-See comments for how to make your own environment and what each required function should do. If followed correctly you can easily build a
+See comments for how to make your own envs and what each required function should do. If followed correctly you can easily build a
 task that can simulate on the CPU and be parallelized on the GPU without having to manage GPU memory and parallelization apart from some
 code that need to be written in batched mode (e.g. reward, success conditions)
 
@@ -38,7 +38,7 @@ from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 
 
-# register the environment by a unique ID and specify a max time limit. Now once this file is imported you can do gym.make("CustomEnv-v0")
+# register the envs by a unique ID and specify a max time limit. Now once this file is imported you can do gym.make("CustomEnv-v0")
 @register_env("CustomEnv-v1", max_episode_steps=200)
 class CustomEnv(BaseEnv):
     """
@@ -91,7 +91,7 @@ class CustomEnv(BaseEnv):
     """
     Reconfiguration Code
 
-    below are all functions involved in reconfiguration during environment reset called in the same order. As a user
+    below are all functions involved in reconfiguration during envs reset called in the same order. As a user
     you can change these however you want for your desired task. These functions will only ever be called once in general. In CPU simulation,
     for some tasks these may need to be called multiple times if you need to swap out object assets. In GPU simulation these will only ever be called once.
     """
@@ -107,13 +107,13 @@ class CustomEnv(BaseEnv):
 
     @property
     def _default_sensor_configs(self):
-        # To customize the sensors that capture images/pointclouds for the environment observations,
+        # To customize the sensors that capture images/pointclouds for the envs observations,
         # simply define a CameraConfig as done below for Camera sensors. You can add multiple sensors by returning a list
         pose = sapien_utils.look_at(
             eye=[0.3, 0, 0.6], target=[-0.1, 0, 0.1]
         )  # sapien_utils.look_at is a utility to get the pose of a camera that looks at a target
 
-        # to see what all the sensors capture in the environment for observations, run env.render_sensors() which returns an rgb array you can visualize
+        # to see what all the sensors capture in the envs for observations, run env.render_sensors() which returns an rgb array you can visualize
         return [CameraConfig("base_camera", pose, 128, 128, np.pi / 2, 0.01, 100)]
 
     @property
@@ -137,7 +137,7 @@ class CustomEnv(BaseEnv):
     """
     Episode Initialization Code
 
-    below are all functions involved in episode initialization during environment reset called in the same order. As a user
+    below are all functions involved in episode initialization during envs reset called in the same order. As a user
     you can change these however you want for your desired task. Note that these functions are given a env_idx variable.
 
     `env_idx` is a torch Tensor representing the indices of the parallel environments that are being initialized/reset. This is used
@@ -192,14 +192,14 @@ class CustomEnv(BaseEnv):
     def get_state_dict(self):
         # this function is important in order to allow accurate replaying of trajectories. Make sure to specify any
         # non simulation state related data such as a random 3D goal position you generated
-        # alternatively you can skip this part if the environment's rewards, observations, eval etc. are dependent on simulation data only
+        # alternatively you can skip this part if the envs's rewards, observations, eval etc. are dependent on simulation data only
         # e.g. self.your_custom_actor.pose.p will always give you your actor's 3D position
         state = super().get_state_dict()
         # state["goal_pos"] = add_your_non_sim_state_data_here
         return state
 
     def set_state_dict(self, state):
-        # this function complements get_state and sets any non simulation state related data correctly so the environment behaves
+        # this function complements get_state and sets any non simulation state related data correctly so the envs behaves
         # the exact same in terms of output rewards, observations, success etc. should you reset state to a given state and take the same actions
         self.goal_pos = state["goal_pos"]
         super().set_state_dict(state)

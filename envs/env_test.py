@@ -1,12 +1,12 @@
 import os
-from typing import Any, Mapping
+from typing import Optional, Mapping, Any
 
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-import environment
+import custom_env
 from robot.crane_x7 import CraneX7
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))

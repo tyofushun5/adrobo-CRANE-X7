@@ -18,12 +18,11 @@ from torch.distributions import OneHotCategoricalStraightThrough
 from torch.distributions.kl import kl_divergence
 from torch.nn.utils import clip_grad_norm_
 
-# Ensure project root is on sys.path so that environment registration runs.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# Import registers the custom PickPlace environment.
+# Import registers the custom PickPlace envs.
 TMP_DIR = PROJECT_ROOT / "tmp"
 if not TMP_DIR.exists():
     try:
@@ -33,7 +32,7 @@ if not TMP_DIR.exists():
 for env_key in ("TMPDIR", "TEMP", "TMP"):
     os.environ.setdefault(env_key, str(TMP_DIR))
 
-from environment import environment as pickplace_env
+from envs import custom_env as pickplace_env
 from robot.crane_x7 import CraneX7
 
 
@@ -98,7 +97,7 @@ class HandCameraWrapper(gym.Wrapper):
 
 
 def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) -> gym.Env:
-    """Create a PickPlace environment, gracefully falling back between GPU/CPU backends."""
+    """Create a PickPlace envs, gracefully falling back between GPU/CPU backends."""
 
     def normalize(value: str | None) -> str:
         return (value or "auto").lower()
@@ -169,7 +168,7 @@ def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) 
         f"  sim_backend={sim} render_backend={render}: {repr(err)}" for sim, render, err in errors
     )
     error_message = (
-        "Failed to initialize ManiSkill PickPlace environment.\n"
+        "Failed to initialize ManiSkill PickPlace envs.\n"
         "Attempted backend combinations:\n"
         f"{attempted}"
     )
