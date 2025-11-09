@@ -19,7 +19,7 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 
 @register_env("PickPlace-CRANE-X7", max_episode_steps=200)
 class PickPlace(BaseEnv):
-    SUPPORTED_ROBOTS = ["robot"]
+    SUPPORTED_ROBOTS = ["CRANE-X7"]
     agent: Union[CraneX7]
 
     goal_radius = 0.1
@@ -30,7 +30,7 @@ class PickPlace(BaseEnv):
     lift_height_offset = 0.12
     grasp_distance_threshold = 0.05
 
-    def __init__(self, *args, robot_uids="robot", robot_init_qpos_noise=0.02, **kwargs):
+    def __init__(self, *args, robot_uids="CRANE-X7", robot_init_qpos_noise=0.02, **kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         self.lift_success_height = self.cube_half_size + self.lift_height_offset
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
@@ -55,7 +55,7 @@ class PickPlace(BaseEnv):
         self.obj = actors.build_cube(
             self.scene,
             half_size=self.cube_half_size,
-            color=np.array([12, 42, 160, 255]) / 255,
+            color=np.array([5 ,5, 5, 255]) / 255,
             name="cube",
             body_type="dynamic",
             initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size]),
