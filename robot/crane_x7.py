@@ -10,7 +10,7 @@ from mani_skill.agents.registration import register_agent
 from mani_skill.sensors.camera import CameraConfig
 
 BASE_DIR = Path(__file__).resolve().parent
-URDF_PATH = BASE_DIR / "urdf" / "crane_x7_d435.urdf"
+URDF_PATH = BASE_DIR / "crane_x7_description" / "urdf" / "crane_x7_d435.urdf"
 
 
 @register_agent()

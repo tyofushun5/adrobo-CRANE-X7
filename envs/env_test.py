@@ -42,7 +42,15 @@ def get_hand_camera_rgb(obs: Mapping[str, Any]):
 
 
 def main():
-    CraneX7.urdf_path = os.path.abspath(os.path.join(PROJECT_ROOT, "robot", "urdf", "crane_x7_d435.urdf"))
+    CraneX7.urdf_path = os.path.abspath(
+        os.path.join(
+            PROJECT_ROOT,
+            "robot",
+            "crane_x7_description",
+            "urdf",
+            "crane_x7_d435.urdf",
+        )
+    )
     env = gym.make(
         "PickPlace-CRANE-X7",
         render_mode="rgb_array",
