@@ -39,6 +39,7 @@ def to_frame_array(frame) -> np.ndarray:
 def record_episode(agent: Optional[dp.Agent], output: str, steps: int, fps: int) -> None:
     base_env = gym.make(
         "PickPlace-CRANE-X7",
+        control_mode="pd_joint_pos",
         render_mode="rgb_array",
         sim_backend="cpu",
         render_backend="cpu",

@@ -2,7 +2,7 @@ import time
 
 import mujoco.viewer
 
-model = mujoco.MjModel.from_xml_path("robot.xml")
+model = mujoco.MjModel.from_xml_path("crane_x7.xml")
 
 data  = mujoco.MjData(model)
 

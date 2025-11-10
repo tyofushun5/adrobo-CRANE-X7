@@ -18,6 +18,9 @@ from torch.distributions import OneHotCategoricalStraightThrough
 from torch.distributions.kl import kl_divergence
 from torch.nn.utils import clip_grad_norm_
 
+from robot.crane_x7 import CraneX7
+from envs import custom_env as pickplace_env
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -31,9 +34,6 @@ if not TMP_DIR.exists():
         TMP_DIR = PROJECT_ROOT
 for env_key in ("TMPDIR", "TEMP", "TMP"):
     os.environ.setdefault(env_key, str(TMP_DIR))
-
-from envs import custom_env as pickplace_env
-from robot.crane_x7 import CraneX7
 
 
 def to_numpy(array: Any) -> np.ndarray:
@@ -136,6 +136,7 @@ def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) 
         try:
             base_env = gym.make(
                 "PickPlace-CRANE-X7",
+                control_mode="pd_ee_delta_pos",
                 render_mode="rgb_array",
                 sim_backend=sim_option,
                 render_backend=render_option,

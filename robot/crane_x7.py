@@ -2,7 +2,10 @@ import sapien
 import numpy as np
 from pathlib import Path
 from mani_skill.agents.base_agent import BaseAgent, Keyframe
-from mani_skill.agents.controllers import *
+from mani_skill.agents.controllers import PDJointPosControllerConfig
+from mani_skill.agents.controllers import PDJointPosMimicControllerConfig
+from mani_skill.agents.controllers import PDEEPoseControllerConfig
+from mani_skill.agents.controllers import deepcopy_dict
 from mani_skill.agents.registration import register_agent
 from mani_skill.sensors.camera import CameraConfig
 
@@ -50,13 +53,13 @@ class CraneX7(BaseAgent):
     #     ),
     # )
 
-    arm_stiffness = 1e3
-    arm_damping = 1e2
-    arm_force_limit = 10000
+    arm_stiffness = 80.0
+    arm_damping = 8.0
+    arm_force_limit = 40.0
 
-    gripper_stiffness = 1e3
-    gripper_damping = 1e2
-    gripper_force_limit = 10000
+    gripper_stiffness = 200.0
+    gripper_damping = 20.0
+    gripper_force_limit = 40.0
 
     @property
     def _controller_configs(self):
@@ -78,6 +81,24 @@ class CraneX7(BaseAgent):
             force_limit=self.arm_force_limit,
             use_delta=True,
         )
+
+        arm_pd_ee_delta_pos = PDEEPoseControllerConfig(
+            self.arm_joint_names,
+            pos_lower=-0.1,
+            pos_upper=0.1,
+            rot_lower=0.0,
+            rot_upper=0.0,
+            stiffness=self.arm_stiffness,
+            damping=self.arm_damping,
+            force_limit=self.arm_force_limit,
+            ee_link="crane_x7_gripper_base_link",
+            urdf_path=str(
+                Path(__file__).resolve().with_name("urdf") / "crane_x7_d435.urdf"
+            ),
+            use_delta=True,
+            use_target=True,
+        )
+
         gripper_pd_joint_pos = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
             lower=-0.01,
@@ -85,15 +106,28 @@ class CraneX7(BaseAgent):
             stiffness=self.gripper_stiffness,
             damping=self.gripper_damping,
             force_limit=self.gripper_force_limit,
+            mimic={
+                "crane_x7_gripper_finger_b_joint": dict(
+                    joint="crane_x7_gripper_finger_a_joint",
+                    multiplier=1.0,
+                    offset=0.0,
+                )
+            },
         )
 
         controller_configs = dict(
             pd_joint_delta_pos=dict(
-                arm=arm_pd_joint_delta_pos, gripper=gripper_pd_joint_pos
+                arm=arm_pd_joint_delta_pos,
+                gripper=gripper_pd_joint_pos
             ),
             pd_joint_pos=dict(
-                arm=arm_pd_joint_pos, gripper=gripper_pd_joint_pos
+                arm=arm_pd_joint_pos,
+                gripper=gripper_pd_joint_pos
             ),
+            pd_ee_delta_pos=dict(
+                arm=arm_pd_ee_delta_pos,
+                gripper=gripper_pd_joint_pos,
+            )
         )
         return deepcopy_dict(controller_configs)
 

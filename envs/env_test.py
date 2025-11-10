@@ -1,6 +1,5 @@
 import os
 from typing import Optional, Mapping, Any
-
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
@@ -43,7 +42,7 @@ def get_hand_camera_rgb(obs: Mapping[str, Any]):
 
 
 def main():
-    CraneX7.mjcf_path = os.path.abspath(os.path.join(PROJECT_ROOT, "robot", "crane_x7.xml"))
+    CraneX7.urdf_path = os.path.abspath(os.path.join(PROJECT_ROOT, "robot", "urdf", "crane_x7_d435.urdf"))
     env = gym.make(
         "PickPlace-CRANE-X7",
         render_mode="rgb_array",

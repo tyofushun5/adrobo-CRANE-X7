@@ -8,6 +8,7 @@ env = gym.make("PickPlace-CRANE-X7")
 
 base_env = gym.make(
                 "PickPlace-CRANE-X7",
+                control_mode="pd_joint_pos",
                 render_mode="rgb_array",
                 robot_uids=CraneX7.uid,
                 obs_mode="rgb",
