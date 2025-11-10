@@ -9,11 +9,14 @@ from mani_skill.agents.controllers import deepcopy_dict
 from mani_skill.agents.registration import register_agent
 from mani_skill.sensors.camera import CameraConfig
 
+BASE_DIR = Path(__file__).resolve().parent
+URDF_PATH = BASE_DIR / "urdf" / "crane_x7_d435.urdf"
+
 
 @register_agent()
 class CraneX7(BaseAgent):
     uid = "CRANE-X7"
-    mjcf_path = str(Path(__file__).resolve().with_name("crane_x7.xml"))
+    urdf_path = str(URDF_PATH)
 
     keyframes = dict(
         rest=Keyframe(
@@ -92,9 +95,7 @@ class CraneX7(BaseAgent):
             damping=self.arm_damping,
             force_limit=self.arm_force_limit,
             ee_link="crane_x7_gripper_base_link",
-            urdf_path=str(
-                Path(__file__).resolve().with_name("urdf") / "crane_x7_d435.urdf"
-            ),
+            urdf_path=str(URDF_PATH),
             use_delta=True,
             use_target=True,
         )

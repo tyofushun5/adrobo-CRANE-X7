@@ -1,3 +1,3 @@
 [submodule "crane_x7_description"]
-	path = crane_x7_description
+	path = robot/crane_x7_description
 	url = https://github.com/rt-net/crane_x7_description.git
