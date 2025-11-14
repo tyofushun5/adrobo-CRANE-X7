@@ -75,6 +75,7 @@ class CraneX7(BaseAgent):
             force_limit=self.arm_force_limit,
             normalize_action=False,
         )
+
         arm_pd_joint_delta_pos = PDJointPosControllerConfig(
             self.arm_joint_names,
             lower=-0.1,
@@ -87,8 +88,8 @@ class CraneX7(BaseAgent):
 
         arm_pd_ee_delta_pos = PDEEPoseControllerConfig(
             self.arm_joint_names,
-            pos_lower=-0.1,
-            pos_upper=0.1,
+            pos_lower=-0.05,
+            pos_upper=0.05,
             rot_lower=0.0,
             rot_upper=0.0,
             stiffness=self.arm_stiffness,
@@ -97,7 +98,7 @@ class CraneX7(BaseAgent):
             ee_link="crane_x7_gripper_base_link",
             urdf_path=str(URDF_PATH),
             use_delta=True,
-            use_target=True,
+            use_target=False,
         )
 
         gripper_pd_joint_pos = PDJointPosMimicControllerConfig(

@@ -68,7 +68,7 @@ class PickPlace(BaseEnv):
     @property
     def _default_human_render_camera_configs(self):
         pose = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
-        return [CameraConfig("render_camera", pose, 1024, 1024, 1, 0.01, 100)]
+        return [CameraConfig("render_camera", pose, 2048, 2048, 1, 0.01, 100)]
 
     def _setup_sensors(self, options: dict):
         return super()._setup_sensors(options)
