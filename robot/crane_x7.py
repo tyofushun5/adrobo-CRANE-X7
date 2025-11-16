@@ -4,7 +4,7 @@ from pathlib import Path
 from mani_skill.agents.base_agent import BaseAgent, Keyframe
 from mani_skill.agents.controllers import PDJointPosControllerConfig
 from mani_skill.agents.controllers import PDJointPosMimicControllerConfig
-from mani_skill.agents.controllers import PDEEPoseControllerConfig
+from mani_skill.agents.controllers import PDEEPosControllerConfig
 from mani_skill.agents.controllers import deepcopy_dict
 from mani_skill.agents.registration import register_agent
 from mani_skill.sensors.camera import CameraConfig
@@ -86,12 +86,10 @@ class CraneX7(BaseAgent):
             use_delta=True,
         )
 
-        arm_pd_ee_delta_pos = PDEEPoseControllerConfig(
+        arm_pd_ee_delta_pos = PDEEPosControllerConfig(
             self.arm_joint_names,
-            pos_lower=-0.05,
-            pos_upper=0.05,
-            rot_lower=0.0,
-            rot_upper=0.0,
+            pos_lower=-0.01,
+            pos_upper=0.01,
             stiffness=self.arm_stiffness,
             damping=self.arm_damping,
             force_limit=self.arm_force_limit,
@@ -99,6 +97,9 @@ class CraneX7(BaseAgent):
             urdf_path=str(URDF_PATH),
             use_delta=True,
             use_target=False,
+            interpolate=True,
+            normalize_action=True,
+            frame="body_translation"
         )
 
         gripper_pd_joint_pos = PDJointPosMimicControllerConfig(

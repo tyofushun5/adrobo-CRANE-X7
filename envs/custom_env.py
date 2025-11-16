@@ -5,7 +5,6 @@ import sapien
 import torch
 import torch.random
 
-from mani_skill.agents.multi_agent import MultiAgent
 from robot.crane_x7 import CraneX7
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
