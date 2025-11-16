@@ -79,8 +79,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Record PickPlace-CRANE-X7 policy rollout.")
     parser.add_argument("--checkpoint", type=str, default="dreamer_agent.pth")
     parser.add_argument("--output", type=str, default="policy_videos/policy_rollout.mp4")
-    parser.add_argument("--steps", type=int, default=10000)
-    parser.add_argument("--fps", type=int, default=60)
+    parser.add_argument("--steps", type=int, default=10000000)
+    parser.add_argument("--fps", type=int, default=30)
     return parser.parse_args()
 
 

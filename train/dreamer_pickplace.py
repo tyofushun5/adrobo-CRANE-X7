@@ -53,7 +53,7 @@ class HandCameraWrapper(gym.Wrapper):
         )
 
     def _extract_rgb(self, obs: Dict[str, Any]) -> np.ndarray:
-        camera_dict = obs["sensor_data"]["hand_camera"]
+        camera_dict = obs["sensor_data"]["base_camera"]
         rgb = to_numpy(camera_dict["rgb"])
         if rgb.ndim == 4:
             rgb = rgb[0]
@@ -598,8 +598,8 @@ class Config:
     eval_episodes: int = 5
     image_size: int = 64
     seed: int = 1
-    sim_backend: str = "gpu"
-    render_backend: str = "gpu"
+    sim_backend: str = "cpu"
+    render_backend: str = "cpu"
     device: str = "auto"
     save_path: str = "dreamer_agent.pth"
 

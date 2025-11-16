@@ -8,7 +8,7 @@ import torch.random
 from robot.crane_x7 import CraneX7
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
-from mani_skill.utils import common, sapien_utils
+from mani_skill.utils import sapien_utils
 from mani_skill.utils.building import actors
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.scene_builder.table import TableSceneBuilder
@@ -54,7 +54,7 @@ class PickPlace(BaseEnv):
         self.obj = actors.build_cube(
             self.scene,
             half_size=self.cube_half_size,
-            color=np.array([5 ,5, 5, 255]) / 255,
+            color=np.array([5, 5, 5, 255]) / 255,
             name="cube",
             body_type="dynamic",
             initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size]),
@@ -62,7 +62,11 @@ class PickPlace(BaseEnv):
 
     @property
     def _default_sensor_configs(self):
-        return []
+        pose = sapien_utils.look_at(
+            eye=[0.35, 0.35, 0.1], target=[0.0, 0, 0.1]
+        )
+
+        return [CameraConfig("base_camera", pose, 128, 128, np.pi / 2, 0.01, 100)]
 
     @property
     def _default_human_render_camera_configs(self):
@@ -122,11 +126,20 @@ class PickPlace(BaseEnv):
             "gripper_to_cube_dist": metrics["distance"],
         }
 
+    def _get_obs_agent(self):
+        return {
+            "joint_pos": self.agent.robot.get_qpos(),
+            "gripper_opening": self._get_gripper_opening(),
+            "ee_position": self._get_end_effector_position(),
+        }
+
     def _get_obs_extra(self, info: dict):
         metrics = self._compute_task_metrics()
         return {
             "height_reached": metrics["height_reached"],
             "gripper_to_cube_dist": metrics["distance"],
+            "gripper_opening": self._get_gripper_opening(),
+            "ee_position": self._get_end_effector_position(),
         }
 
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
@@ -163,8 +176,7 @@ class PickPlace(BaseEnv):
 
     def _compute_task_metrics(self) -> Dict[str, torch.Tensor]:
         cube_pos = self.obj.pose.p
-        gripper_link = self.agent.robot.links_map["crane_x7_gripper_base_link"]
-        gripper_pos = gripper_link.pose.p
+        gripper_pos = self._get_end_effector_position()
         distance = torch.linalg.norm(cube_pos - gripper_pos, axis=1)
         height = cube_pos[:, 2]
         height_reached = height >= self.lift_success_height
@@ -177,3 +189,13 @@ class PickPlace(BaseEnv):
             "is_close": is_close,
             "success": success,
         }
+
+    def _get_gripper_opening(self) -> torch.Tensor:
+        joints = self.agent.robot.active_joints_map
+        finger_a = joints["crane_x7_gripper_finger_a_joint"].qpos
+        finger_b = joints["crane_x7_gripper_finger_b_joint"].qpos
+        return finger_a + finger_b
+
+    def _get_end_effector_position(self) -> torch.Tensor:
+        gripper_link = self.agent.robot.links_map["crane_x7_gripper_base_link"]
+        return gripper_link.pose.p

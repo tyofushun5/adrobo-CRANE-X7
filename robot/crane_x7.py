@@ -56,13 +56,13 @@ class CraneX7(BaseAgent):
     #     ),
     # )
 
-    arm_stiffness = 80.0
-    arm_damping = 8.0
-    arm_force_limit = 40.0
+    arm_stiffness = 10.0
+    arm_damping = 10.0
+    arm_force_limit = 53.0
 
-    gripper_stiffness = 200.0
+    gripper_stiffness = 100.0
     gripper_damping = 20.0
-    gripper_force_limit = 40.0
+    gripper_force_limit = 5.0
 
     @property
     def _controller_configs(self):
@@ -99,7 +99,7 @@ class CraneX7(BaseAgent):
             use_target=False,
             interpolate=True,
             normalize_action=True,
-            frame="body_translation"
+            frame="root_translation"
         )
 
         gripper_pd_joint_pos = PDJointPosMimicControllerConfig(
@@ -134,21 +134,21 @@ class CraneX7(BaseAgent):
         )
         return deepcopy_dict(controller_configs)
 
-    @property
-    def _sensor_configs(self):
-
-        p = [0.0, 0.0445, 0.034]
-        q = [np.sqrt(0.25), -np.sqrt(0.25), -np.sqrt(0.25), -np.sqrt(0.25)]
-
-        return [
-            CameraConfig(
-                uid="hand_camera",
-                pose=sapien.Pose(p=p, q=q),
-                width=640,
-                height=480,
-                fov=np.deg2rad(69),
-                near=0.01,
-                far=10.0,
-                mount=self.robot.links_map["crane_x7_gripper_base_link"],
-            )
-        ]
+    # @property
+    # def _sensor_configs(self):
+    #
+    #     p = [0.0, 0.0445, 0.034]
+    #     q = [np.sqrt(0.25), -np.sqrt(0.25), -np.sqrt(0.25), -np.sqrt(0.25)]
+    #
+    #     return [
+    #         CameraConfig(
+    #             uid="hand_camera",
+    #             pose=sapien.Pose(p=p, q=q),
+    #             width=640,
+    #             height=480,
+    #             fov=np.deg2rad(69),
+    #             near=0.01,
+    #             far=10.0,
+    #             mount=self.robot.links_map["crane_x7_gripper_base_link"],
+    #         )
+    #     ]
