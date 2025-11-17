@@ -16,7 +16,7 @@ from mani_skill.utils.structs import Pose
 from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 
 
-@register_env("PickPlace-CRANE-X7", max_episode_steps=200)
+@register_env("PickPlace-CRANE-X7", max_episode_steps=500)
 class PickPlace(BaseEnv):
     SUPPORTED_ROBOTS = ["CRANE-X7"]
     agent: Union[CraneX7]
@@ -66,7 +66,7 @@ class PickPlace(BaseEnv):
             eye=[0.35, 0.35, 0.1], target=[0.0, 0, 0.1]
         )
 
-        return [CameraConfig("base_camera", pose, 128, 128, np.pi / 2, 0.01, 100)]
+        return [CameraConfig("base_camera", pose, 64, 64, np.pi / 2, 0.01, 100)]
 
     @property
     def _default_human_render_camera_configs(self):

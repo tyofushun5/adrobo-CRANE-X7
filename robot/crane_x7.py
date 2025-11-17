@@ -58,7 +58,7 @@ class CraneX7(BaseAgent):
 
     arm_stiffness = 10.0
     arm_damping = 10.0
-    arm_force_limit = 53.0
+    arm_force_limit = 5.0
 
     gripper_stiffness = 100.0
     gripper_damping = 20.0
@@ -104,8 +104,8 @@ class CraneX7(BaseAgent):
 
         gripper_pd_joint_pos = PDJointPosMimicControllerConfig(
             self.gripper_joint_names,
-            lower=-0.01,
-            upper=0.04,
+            lower=-0.04,
+            upper=1.571,
             stiffness=self.gripper_stiffness,
             damping=self.gripper_damping,
             force_limit=self.gripper_force_limit,

@@ -43,7 +43,6 @@ def to_numpy(array: Any) -> np.ndarray:
 
 
 class HandCameraWrapper(gym.Wrapper):
-    """Extracts the CRANE-X7 hand camera RGB observation and downsamples it."""
 
     def __init__(self, env: gym.Env, image_size: int = 64):
         super().__init__(env)
