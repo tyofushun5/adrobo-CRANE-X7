@@ -23,6 +23,9 @@ if hasattr(rgb, "detach"):
 if rgb.ndim == 4:
     rgb = rgb[0]
 
-plt.imshow(rgb)
-plt.axis("off")
-plt.show()
+action_dim = env.action_space.shape[0]
+print(action_dim)
+
+# plt.imshow(rgb)
+# plt.axis("off")
+# plt.show()
