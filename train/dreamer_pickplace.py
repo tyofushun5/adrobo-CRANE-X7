@@ -47,8 +47,17 @@ class HandCameraWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env, image_size: int = 64):
         super().__init__(env)
         self.image_size = image_size
-        self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(image_size, image_size, 3), dtype=np.uint8
+        sample_obs, _ = self.env.reset()
+        self.joint_dim = self._extract_joint(sample_obs).shape[0]
+        self.observation_space = gym.spaces.Dict(
+            {
+                "image": gym.spaces.Box(
+                    low=0, high=255, shape=(image_size, image_size, 3), dtype=np.uint8
+                ),
+                "joint_pos": gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(self.joint_dim,), dtype=np.float32
+                ),
+            }
         )
 
     def _extract_rgb(self, obs: Dict[str, Any]) -> np.ndarray:
@@ -65,16 +74,29 @@ class HandCameraWrapper(gym.Wrapper):
         )
         return rgb_tensor.squeeze(0).permute(1, 2, 0).byte().numpy()
 
+    def _extract_joint(self, obs: Dict[str, Any]) -> np.ndarray:
+        joint = obs.get("agent", {}).get("joint_pos", None)
+        if joint is None:
+            joint = self.env.agent.robot.get_qpos()
+        joint = to_numpy(joint).astype(np.float32).reshape(-1)
+        return joint
+
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
-        return self._extract_rgb(obs), self._convert_info(info)
+        return {
+            "image": self._extract_rgb(obs),
+            "joint_pos": self._extract_joint(obs),
+        }, self._convert_info(info)
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         reward_value = float(reward.item() if isinstance(reward, torch.Tensor) else reward)
         converted_info = self._convert_info(info)
         return (
-            self._extract_rgb(obs),
+            {
+                "image": self._extract_rgb(obs),
+                "joint_pos": self._extract_joint(obs),
+            },
             reward_value,
             bool(terminated),
             bool(truncated),
@@ -331,7 +353,15 @@ class TruncNormalDist(TruncatedNormal):
 
 
 class RSSM(nn.Module):
-    def __init__(self, mlp_hidden_dim: int, rnn_hidden_dim: int, state_dim: int, num_classes: int, action_dim: int):
+    def __init__(
+        self,
+        mlp_hidden_dim: int,
+        rnn_hidden_dim: int,
+        state_dim: int,
+        num_classes: int,
+        action_dim: int,
+        obs_embed_dim: int,
+    ):
         super().__init__()
         self.rnn_hidden_dim = rnn_hidden_dim
         self.state_dim = state_dim
@@ -343,7 +373,7 @@ class RSSM(nn.Module):
         self.prior_hidden = nn.Linear(rnn_hidden_dim, mlp_hidden_dim)
         self.prior_logits = nn.Linear(mlp_hidden_dim, state_dim * num_classes)
 
-        self.posterior_hidden = nn.Linear(rnn_hidden_dim + 1536, mlp_hidden_dim)
+        self.posterior_hidden = nn.Linear(rnn_hidden_dim + obs_embed_dim, mlp_hidden_dim)
         self.posterior_logits = nn.Linear(mlp_hidden_dim, state_dim * num_classes)
 
     def recurrent(self, state: torch.Tensor, action: torch.Tensor, rnn_hidden: torch.Tensor):
@@ -370,19 +400,28 @@ class RSSM(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self):
+    def __init__(self, joint_dim: int, joint_embed_dim: int = 128):
         super().__init__()
         self.conv1 = nn.Conv2d(3, 48, kernel_size=4, stride=2)
         self.conv2 = nn.Conv2d(48, 96, kernel_size=4, stride=2)
         self.conv3 = nn.Conv2d(96, 192, kernel_size=4, stride=2)
         self.conv4 = nn.Conv2d(192, 384, kernel_size=4, stride=2)
+        self.joint_embed = nn.Sequential(
+            nn.Linear(joint_dim, joint_embed_dim),
+            nn.ELU(),
+            nn.Linear(joint_embed_dim, joint_embed_dim),
+            nn.ELU(),
+        )
+        self.joint_dim = joint_dim
+        self.output_dim = 1536 + joint_embed_dim
 
-    def forward(self, obs: torch.Tensor):
-        hidden = F.elu(self.conv1(obs))
+    def forward(self, images: torch.Tensor, joints: torch.Tensor):
+        hidden = F.elu(self.conv1(images))
         hidden = F.elu(self.conv2(hidden))
         hidden = F.elu(self.conv3(hidden))
-        embedded_obs = self.conv4(hidden).reshape(obs.size(0), -1)
-        return embedded_obs
+        image_embedding = self.conv4(hidden).reshape(images.size(0), -1)
+        joint_embedding = self.joint_embed(joints)
+        return torch.cat([image_embedding, joint_embedding], dim=1)
 
 
 class Decoder(nn.Module):
@@ -466,9 +505,18 @@ class Critic(nn.Module):
 
 
 class ReplayBuffer:
-    def __init__(self, capacity: int, observation_shape: Tuple[int, int, int], action_dim: int):
+    def __init__(
+        self,
+        capacity: int,
+        image_shape: Tuple[int, int, int],
+        joint_dim: int,
+        action_dim: int,
+    ):
         self.capacity = capacity
-        self.observations = np.zeros((capacity, *observation_shape), dtype=np.float32)
+        self.image_shape = image_shape
+        self.joint_dim = joint_dim
+        self.images = np.zeros((capacity, *image_shape), dtype=np.float32)
+        self.joints = np.zeros((capacity, joint_dim), dtype=np.float32)
         self.actions = np.zeros((capacity, action_dim), dtype=np.float32)
         self.rewards = np.zeros((capacity, 1), dtype=np.float32)
         self.done = np.zeros((capacity, 1), dtype=bool)
@@ -476,7 +524,8 @@ class ReplayBuffer:
         self.is_filled = False
 
     def push(self, observation, action, reward, done):
-        self.observations[self.index] = observation
+        self.images[self.index] = observation["image"]
+        self.joints[self.index] = observation["joint_pos"]
         self.actions[self.index] = action
         self.rewards[self.index] = reward
         self.done[self.index] = done
@@ -496,21 +545,23 @@ class ReplayBuffer:
                     break
             sampled_indexes.extend(range(initial_index, final_index + 1))
 
-        sampled_observations = self.observations[sampled_indexes].reshape(
-            batch_size, chunk_length, *self.observations.shape[1:]
-        )
+        sample_shape = (batch_size, chunk_length)
+        sampled_images = self.images[sampled_indexes].reshape(*sample_shape, *self.image_shape)
+        sampled_joints = self.joints[sampled_indexes].reshape(*sample_shape, self.joint_dim)
         sampled_actions = self.actions[sampled_indexes].reshape(batch_size, chunk_length, -1)
         sampled_rewards = self.rewards[sampled_indexes].reshape(batch_size, chunk_length, 1)
         sampled_done = self.done[sampled_indexes].reshape(batch_size, chunk_length, 1)
-        return sampled_observations, sampled_actions, sampled_rewards, sampled_done
+        observations = {"image": sampled_images, "joint_pos": sampled_joints}
+        return observations, sampled_actions, sampled_rewards, sampled_done
 
     def __len__(self):
         return self.capacity if self.is_filled else self.index
 
 
-def preprocess_obs(obs):
-    obs = obs.astype(np.float32)
-    return obs / 255.0 - 0.5
+def preprocess_obs(obs: Dict[str, np.ndarray]):
+    image = obs["image"].astype(np.float32) / 255.0 - 0.5
+    joint = obs["joint_pos"].astype(np.float32)
+    return {"image": image, "joint_pos": joint}
 
 
 def calculate_lambda_target(rewards: torch.Tensor, discounts: torch.Tensor, values: torch.Tensor, lambda_: float):
@@ -537,15 +588,16 @@ class Agent(nn.Module):
 
     def __call__(self, obs, eval: bool = True):
         obs = preprocess_obs(obs)
-        obs = torch.as_tensor(obs, device=self.device)
-        obs = obs.transpose(1, 2).transpose(0, 1).unsqueeze(0)
+        image = torch.as_tensor(obs["image"], device=self.device)
+        image = image.transpose(1, 2).transpose(0, 1).unsqueeze(0)
+        joint = torch.as_tensor(obs["joint_pos"], device=self.device).unsqueeze(0)
         with torch.no_grad():
             state_prior = self.rssm.get_prior(self.rnn_hidden)
             state = state_prior.sample().flatten(1)
             obs_dist = self.decoder(state, self.rnn_hidden)
             obs_pred = obs_dist.mean
 
-            embedded_obs = self.encoder(obs)
+            embedded_obs = self.encoder(image, joint)
             state_posterior = self.rssm.get_posterior(self.rnn_hidden, embedded_obs)
             state = state_posterior.sample().flatten(1)
             action, _, _ = self.action_model(state, self.rnn_hidden, eval=eval)
@@ -635,11 +687,20 @@ def train(cfg: Config):
     eval_env = make_env(cfg.seed + 1, cfg.image_size, cfg.sim_backend, cfg.render_backend)
 
     action_dim = env.action_space.shape[0]
+    image_shape = env.observation_space["image"].shape
+    joint_dim = env.observation_space["joint_pos"].shape[0]
 
-    replay_buffer = ReplayBuffer(cfg.buffer_size, (cfg.image_size, cfg.image_size, 3), action_dim)
+    replay_buffer = ReplayBuffer(cfg.buffer_size, image_shape, joint_dim, action_dim)
 
-    rssm = RSSM(cfg.mlp_hidden_dim, cfg.rnn_hidden_dim, cfg.state_dim, cfg.num_classes, action_dim).to(device)
-    encoder = Encoder().to(device)
+    encoder = Encoder(joint_dim).to(device)
+    rssm = RSSM(
+        cfg.mlp_hidden_dim,
+        cfg.rnn_hidden_dim,
+        cfg.state_dim,
+        cfg.num_classes,
+        action_dim,
+        encoder.output_dim,
+    ).to(device)
     decoder = Decoder(cfg.rnn_hidden_dim, cfg.state_dim, cfg.num_classes).to(device)
     reward_model = RewardModel(cfg.mlp_hidden_dim, cfg.rnn_hidden_dim, cfg.state_dim, cfg.num_classes).to(device)
     actor = Actor(action_dim, cfg.mlp_hidden_dim, cfg.rnn_hidden_dim, cfg.state_dim, cfg.num_classes).to(device)
@@ -679,14 +740,16 @@ def train(cfg: Config):
         observations, actions, rewards, done_flags = replay_buffer.sample(cfg.batch_size, cfg.seq_length)
         done_flags = 1 - done_flags
 
-        observations = torch.permute(torch.as_tensor(observations, device=device), (1, 0, 4, 2, 3))
+        obs_images = torch.permute(torch.as_tensor(observations["image"], device=device), (1, 0, 4, 2, 3))
+        obs_joints = torch.as_tensor(observations["joint_pos"], device=device).transpose(0, 1)
         actions = torch.as_tensor(actions, device=device).transpose(0, 1)
         rewards = torch.as_tensor(rewards, device=device).transpose(0, 1)
         done_flags = torch.as_tensor(done_flags, device=device).transpose(0, 1).float()
 
-        emb_observations = encoder(observations.reshape(-1, 3, cfg.image_size, cfg.image_size)).view(
-            cfg.seq_length, cfg.batch_size, -1
-        )
+        emb_observations = encoder(
+            obs_images.reshape(-1, 3, cfg.image_size, cfg.image_size),
+            obs_joints.reshape(-1, joint_dim),
+        ).view(cfg.seq_length, cfg.batch_size, -1)
 
         state = torch.zeros(cfg.batch_size, cfg.state_dim * cfg.num_classes, device=device)
         rnn_hidden = torch.zeros(cfg.batch_size, cfg.rnn_hidden_dim, device=device)
@@ -713,8 +776,8 @@ def train(cfg: Config):
         obs_dist = decoder(flatten_states, flatten_rnn_hiddens)
         reward_dist = reward_model(flatten_states, flatten_rnn_hiddens)
 
-        C, H, W = observations.shape[2:]
-        obs_loss = -torch.mean(obs_dist.log_prob(observations[1:].reshape(-1, C, H, W)))
+        C, H, W = obs_images.shape[2:]
+        obs_loss = -torch.mean(obs_dist.log_prob(obs_images[1:].reshape(-1, C, H, W)))
         reward_loss = -torch.mean(reward_dist.log_prob(rewards[:-1].reshape(-1, 1)))
         wm_loss = obs_loss + cfg.reward_loss_scale * reward_loss + cfg.kl_scale * kl_loss
         obs_loss_value = obs_loss.item()
@@ -770,14 +833,16 @@ def train(cfg: Config):
         if (iteration + 1) % cfg.batch_size == 0:
             observations, actions, rewards, done_flags = replay_buffer.sample(cfg.batch_size, cfg.seq_length)
             done_flags = 1 - done_flags
-            observations = torch.permute(torch.as_tensor(observations, device=device), (1, 0, 4, 2, 3))
+            obs_images = torch.permute(torch.as_tensor(observations["image"], device=device), (1, 0, 4, 2, 3))
+            obs_joints = torch.as_tensor(observations["joint_pos"], device=device).transpose(0, 1)
             actions = torch.as_tensor(actions, device=device).transpose(0, 1)
             rewards = torch.as_tensor(rewards, device=device).transpose(0, 1)
             done_flags = torch.as_tensor(done_flags, device=device).transpose(0, 1).float()
 
-            emb_observations = encoder(observations.reshape(-1, 3, cfg.image_size, cfg.image_size)).view(
-                cfg.seq_length, cfg.batch_size, -1
-            )
+            emb_observations = encoder(
+                obs_images.reshape(-1, 3, cfg.image_size, cfg.image_size),
+                obs_joints.reshape(-1, joint_dim),
+            ).view(cfg.seq_length, cfg.batch_size, -1)
             state = torch.zeros(cfg.batch_size, cfg.state_dim * cfg.num_classes, device=device)
             rnn_hidden = torch.zeros(cfg.batch_size, cfg.rnn_hidden_dim, device=device)
             states = torch.zeros(cfg.seq_length, cfg.batch_size, cfg.state_dim * cfg.num_classes, device=device)
@@ -802,8 +867,8 @@ def train(cfg: Config):
 
             obs_dist = decoder(flatten_states, flatten_rnn_hiddens)
             reward_dist = reward_model(flatten_states, flatten_rnn_hiddens)
-            C, H, W = observations.shape[2:]
-            obs_loss = -torch.mean(obs_dist.log_prob(observations[1:].reshape(-1, C, H, W)))
+            C, H, W = obs_images.shape[2:]
+            obs_loss = -torch.mean(obs_dist.log_prob(obs_images[1:].reshape(-1, C, H, W)))
             reward_loss = -torch.mean(reward_dist.log_prob(rewards[:-1].reshape(-1, 1)))
             wm_loss = obs_loss + cfg.reward_loss_scale * reward_loss + cfg.kl_scale * kl_loss
 
