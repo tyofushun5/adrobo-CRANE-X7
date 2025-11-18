@@ -657,6 +657,7 @@ class Config:
     render_backend: str = "cpu"
     device: str = "auto"
     save_path: str = "dreamer_agent.pth"
+    checkpoint_freq: int = 5000
 
 
 def evaluation(eval_env: gym.Env, policy: Agent, cfg: Config):
@@ -738,6 +739,15 @@ def train(cfg: Config):
 
     policy = Agent(encoder, decoder, rssm, actor)
     policy.to(device)
+    checkpoint_base = Path(cfg.save_path)
+    checkpoint_base.parent.mkdir(parents=True, exist_ok=True)
+
+    def save_checkpoint(suffix: str | None = None):
+        target_path = checkpoint_base
+        if suffix:
+            target_path = checkpoint_base.with_name(f"{checkpoint_base.stem}_{suffix}{checkpoint_base.suffix}")
+        torch.save(policy.to("cpu"), str(target_path))
+        policy.to(device)
 
     print("Starting world model pretraining...")
     for iteration in range(cfg.pretrain_iters):
@@ -875,6 +885,10 @@ def train(cfg: Config):
             obs_loss = -torch.mean(obs_dist.log_prob(obs_images[1:].reshape(-1, C, H, W)))
             reward_loss = -torch.mean(reward_dist.log_prob(rewards[:-1].reshape(-1, 1)))
             wm_loss = obs_loss + cfg.reward_loss_scale * reward_loss + cfg.kl_scale * kl_loss
+            obs_loss_value = obs_loss.item()
+            reward_loss_value = reward_loss.item()
+            kl_loss_value = kl_loss.item()
+            wm_loss_value = wm_loss.item()
 
             wm_optimizer.zero_grad()
             wm_loss.backward()
@@ -983,8 +997,10 @@ def train(cfg: Config):
             success = evaluation(eval_env, policy, cfg)
             if success > best_success:
                 best_success = success
-                torch.save(policy.to("cpu"), cfg.save_path)
-                policy.to(device)
+                save_checkpoint()
+
+        if cfg.checkpoint_freq and (iteration + 1) % cfg.checkpoint_freq == 0:
+            save_checkpoint(f"iter{iteration + 1}")
 
     env.close()
     eval_env.close()
@@ -1010,6 +1026,7 @@ def parse_args():
     parser.add_argument("--sim-backend", type=str, default="auto")
     parser.add_argument("--render-backend", type=str, default="auto")
     parser.add_argument("--image-size", type=int, default=64)
+    parser.add_argument("--checkpoint-freq", type=int, default=5000)
     return parser.parse_args()
 
 
@@ -1032,6 +1049,7 @@ def main():
         sim_backend=args.sim_backend,
         render_backend=args.render_backend,
         image_size=args.image_size,
+        checkpoint_freq=args.checkpoint_freq,
     )
     train(cfg)
 
