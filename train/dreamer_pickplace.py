@@ -79,6 +79,7 @@ class HandCameraWrapper(gym.Wrapper):
         if joint is None:
             joint = self.env.agent.robot.get_qpos()
         joint = to_numpy(joint).astype(np.float32).reshape(-1)
+        joint = np.nan_to_num(joint, nan=0.0, posinf=0.0, neginf=0.0)
         return joint
 
     def reset(self, **kwargs):
@@ -559,8 +560,11 @@ class ReplayBuffer:
 
 
 def preprocess_obs(obs: Dict[str, np.ndarray]):
-    image = obs["image"].astype(np.float32) / 255.0 - 0.5
+    image = obs["image"].astype(np.float32)
+    image = np.nan_to_num(image, nan=0.0, posinf=255.0, neginf=0.0)
+    image = image / 255.0 - 0.5
     joint = obs["joint_pos"].astype(np.float32)
+    joint = np.nan_to_num(joint, nan=0.0, posinf=0.0, neginf=0.0)
     return {"image": image, "joint_pos": joint}
 
 
