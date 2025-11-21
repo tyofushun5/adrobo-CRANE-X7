@@ -145,22 +145,27 @@ class PickPlace(BaseEnv):
     def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
         metrics = self._compute_task_metrics()
         distance = metrics["distance"]
-        reaching_reward = 1 - torch.tanh(5 * distance)
-
         cube_height = metrics["cube_height"]
+
+        # Shaping: small reward for moving closer to the cube.
+        reaching_reward = 0.2 * (1 - torch.tanh(5 * distance))
+
+        # Treat “grasped” asエンドエフェクタが十分近い状態。
+        grasped = metrics["is_close"].float()
+        grasp_bonus = 1.0 * grasped
+
+        # Additional reward for lifting while grasped.
         lift_progress = torch.clamp(
             (cube_height - self.cube_half_size)
             / max(self.lift_success_height - self.cube_half_size, 1e-6),
             min=0.0,
             max=1.0,
         )
-        lift_reward = lift_progress
+        lift_reward = 2.0 * lift_progress * grasped
 
-        grasp_bonus = torch.exp(-10 * distance)
-
-        reward = reaching_reward + lift_reward + grasp_bonus
+        reward = reaching_reward + grasp_bonus + lift_reward
         success = metrics["success"]
-        reward[success] = 5.0
+        reward[success] = 10.0
         return reward
 
     def compute_normalized_dense_reward(

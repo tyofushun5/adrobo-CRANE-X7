@@ -42,6 +42,41 @@ def to_numpy(array: Any) -> np.ndarray:
     return np.asarray(array)
 
 
+class DeltaPosGripperWrapper(gym.ActionWrapper):
+    """Reduce action space to (dx, dy, dz, gripper) in [-1, 1].
+
+    The wrapped env expects a longer delta-EE action (pos + rot [+ gripper]).
+    We zero rotation, scale position deltas by `max_delta_m`, and map the last
+    element to the gripper channel if present.
+    """
+
+    def __init__(self, env: gym.Env, max_delta_m: float = 0.02):
+        super().__init__(env)
+        self.max_delta_m = max_delta_m
+        # Expose a compact 4-D Box action space.
+        self.action_space = gym.spaces.Box(
+            low=-1.0, high=1.0, shape=(4,), dtype=np.float32
+        )
+
+    def action(self, action: np.ndarray) -> np.ndarray:
+        # Expected input: [dx, dy, dz, gripper] in [-1, 1].
+        a = np.asarray(action, dtype=np.float32).reshape(-1)
+        a = np.clip(a, -1.0, 1.0)
+        dx_dy_dz = a[:3] * self.max_delta_m
+        grip = a[3] if a.size > 3 else 0.0
+
+        # Build the underlying env action: zeros except scaled position deltas.
+        raw = self.env.action_space.sample() * 0.0
+        if raw.shape[0] >= 3:
+            raw[:3] = dx_dy_dz
+        # Zero rotation if present.
+        if raw.shape[0] >= 6:
+            raw[3:6] = 0.0
+        # Map gripper to last element if available.
+        raw[-1] = grip if raw.size > 0 else 0.0
+        return raw
+
+
 class HandCameraWrapper(gym.Wrapper):
 
     def __init__(self, env: gym.Env, image_size: int = 64):
@@ -165,7 +200,8 @@ def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) 
                 robot_uids=CraneX7.uid,
                 obs_mode="rgb",
             )
-            wrapped_env = HandCameraWrapper(base_env, image_size=image_size)
+            wrapped_env = DeltaPosGripperWrapper(base_env, max_delta_m=0.02)
+            wrapped_env = HandCameraWrapper(wrapped_env, image_size=image_size)
             wrapped_env.reset(seed=seed)
             setattr(wrapped_env, "resolved_sim_backend", sim_option)
             setattr(wrapped_env, "resolved_render_backend", render_option)
