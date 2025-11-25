@@ -660,17 +660,17 @@ class Agent(nn.Module):
 
 @dataclass
 class Config:
-    buffer_size: int = 200_000
+    buffer_size: int = 100_000
     batch_size: int = 32
     seq_length: int = 50
     imagination_horizon: int = 15
-    state_dim: int = 20
-    num_classes: int = 20
-    rnn_hidden_dim: int = 200
-    mlp_hidden_dim: int = 200
-    model_lr: float = 6e-4
-    actor_lr: float = 8e-5
-    critic_lr: float = 8e-5
+    state_dim: int = 32
+    num_classes: int = 32
+    rnn_hidden_dim: int = 600
+    mlp_hidden_dim: int = 400
+    model_lr: float = 2e-4
+    actor_lr: float = 4e-5
+    critic_lr: float = 1e-5
     epsilon: float = 1e-5
     weight_decay: float = 1e-6
     gradient_clipping: float = 50.0
@@ -1049,7 +1049,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--total-iters", type=int, default=80000)
     parser.add_argument("--seed-iters", type=int, default=1000)
-    parser.add_argument("--pretrain-iters", type=int, default=200)
+    parser.add_argument("--pretrain-iters", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--buffer-size", type=int, default=200_000)
     parser.add_argument("--imagination-horizon", type=int, default=15)
