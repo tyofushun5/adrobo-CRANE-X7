@@ -1,6 +1,4 @@
-import argparse
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Tuple, List
 
@@ -21,6 +19,7 @@ from robot.crane_x7 import CraneX7
 from dreamer_v2 import (
     Agent,
     Actor,
+    Config,
     Critic,
     Decoder,
     Encoder,
@@ -216,44 +215,6 @@ def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) 
     )
     last_exception = errors[-1][2] if errors else None
     raise RuntimeError(error_message) from last_exception
-
-
-@dataclass
-class Config:
-    buffer_size: int = 100_000
-    batch_size: int = 32
-    seq_length: int = 50
-    imagination_horizon: int = 15
-    state_dim: int = 32
-    num_classes: int = 32
-    rnn_hidden_dim: int = 600
-    mlp_hidden_dim: int = 400
-    model_lr: float = 2e-4
-    actor_lr: float = 4e-5
-    critic_lr: float = 1e-5
-    epsilon: float = 1e-5
-    weight_decay: float = 1e-6
-    gradient_clipping: float = 50.0
-    kl_scale: float = 0.2
-    kl_balance: float = 0.8
-    actor_entropy_scale: float = 3e-3
-    slow_critic_update: int = 100
-    reward_loss_scale: float = 1.0
-    discount: float = 0.995
-    lambda_: float = 0.95
-    pretrain_iters: int = 200
-    iter: int = 80000
-    seed_iter: int = 1000
-    eval_freq: int = 10
-    log_freq: int = 100
-    eval_episodes: int = 5
-    image_size: int = 64
-    seed: int = 1
-    sim_backend: str = "cpu"
-    render_backend: str = "cpu"
-    device: str = "auto"
-    save_path: str = "dreamer_agent.pth"
-    checkpoint_freq: int = 5000
 
 
 def evaluation(eval_env: gym.Env, policy: Agent, cfg: Config):
@@ -604,49 +565,8 @@ def train(cfg: Config):
     return policy
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="Dreamer training on ManiSkill PickPlace (CRANE-X7 hand camera).")
-    parser.add_argument("--seed", type=int, default=1234)
-    parser.add_argument("--total-iters", type=int, default=80000)
-    parser.add_argument("--seed-iters", type=int, default=1000)
-    parser.add_argument("--pretrain-iters", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--buffer-size", type=int, default=200_000)
-    parser.add_argument("--imagination-horizon", type=int, default=15)
-    parser.add_argument("--model-lr", type=float, default=6e-4)
-    parser.add_argument("--actor-lr", type=float, default=8e-5)
-    parser.add_argument("--critic-lr", type=float, default=8e-5)
-    parser.add_argument("--log-freq", type=int, default=100)
-    parser.add_argument("--device", type=str, default="auto")
-    parser.add_argument("--save-path", type=str, default="dreamer_agent.pth")
-    parser.add_argument("--sim-backend", type=str, default="auto")
-    parser.add_argument("--render-backend", type=str, default="auto")
-    parser.add_argument("--image-size", type=int, default=64)
-    parser.add_argument("--checkpoint-freq", type=int, default=5000)
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
-    cfg = Config(
-        seed=args.seed,
-        buffer_size=args.buffer_size,
-        batch_size=args.batch_size,
-        imagination_horizon=args.imagination_horizon,
-        model_lr=args.model_lr,
-        actor_lr=args.actor_lr,
-        critic_lr=args.critic_lr,
-        iter=args.total_iters,
-        seed_iter=args.seed_iters,
-        pretrain_iters=args.pretrain_iters,
-        log_freq=args.log_freq,
-        device=args.device,
-        save_path=args.save_path,
-        sim_backend=args.sim_backend,
-        render_backend=args.render_backend,
-        image_size=args.image_size,
-        checkpoint_freq=args.checkpoint_freq,
-    )
+    cfg = Config()
     train(cfg)
 
 
