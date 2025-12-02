@@ -9,6 +9,8 @@ python test.py -r "CRANE-X7" -c "pd_joint_delta_pos" -b "gpu" --random-actions -
 #エンドエフェクタ位置を指定して動かす
 python test.py -r "CRANE-X7" -c "pd_ee_delta_pos" -b "gpu" --random-actions --shader "rt-fast"
 
+python test.py -r "CRANE-X7" -c "pd_ee_delta_pos_xy_clip" -b "gpu" --random-actions --shader "rt-fast"
+
 
 環境をダウンロード
 # list all scene datasets available for download
@@ -16,3 +18,5 @@ python -m mani_skill.utils.download_asset --list "scene"
 python -m mani_skill.utils.download_asset ReplicaCAD # small scene and fast to download
 python -m mani_skill.utils.download_asset RoboCasa # lots of procedurally generated scenes and fast to download
 python -m mani_skill.utils.download_asset AI2THOR # lots of scenes and slow to download
+
+

@@ -39,7 +39,7 @@ def to_frame_array(frame) -> np.ndarray:
 def record_episode(agent: Optional[dp.Agent], output: str, steps: int, fps: int) -> None:
     base_env = gym.make(
         "PickPlace-CRANE-X7",
-        control_mode="pd_joint_pos",
+        control_mode="pd_ee_delta_pos_xy_clip",
         render_mode="rgb_array",
         sim_backend="cpu",
         render_backend="cpu",
@@ -77,7 +77,7 @@ def record_episode(agent: Optional[dp.Agent], output: str, steps: int, fps: int)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Record PickPlace-CRANE-X7 policy rollout.")
-    parser.add_argument("--checkpoint", type=str, default="dreamer_agent_iter5000.pth")
+    parser.add_argument("--checkpoint", type=str, default="dreamer_agent.pth")
     parser.add_argument("--output", type=str, default="policy_videos/policy_rollout.mp4")
     parser.add_argument("--steps", type=int, default=10000000)
     parser.add_argument("--fps", type=int, default=30)

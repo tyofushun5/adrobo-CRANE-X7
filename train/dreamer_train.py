@@ -29,6 +29,7 @@ from dreamer_v2 import (
     calculate_lambda_target,
     preprocess_obs,
 )
+
 from dreamer_v2.distributions import MSE
 from dreamer_v2.tools.set_seed import set_seed
 
@@ -37,6 +38,10 @@ def to_numpy(array: Any) -> np.ndarray:
     if isinstance(array, torch.Tensor):
         return array.detach().cpu().numpy()
     return np.asarray(array)
+
+
+def transform_reward(reward: float) -> float:
+    return float(np.tanh(reward))
 
 
 class DeltaPosGripperWrapper(gym.ActionWrapper):
@@ -286,7 +291,7 @@ def train(cfg: Config):
         action = env.action_space.sample()
         next_obs, reward, done, truncated, info = env.step(action)
         terminated = done or truncated
-        replay_buffer.push(preprocess_obs(obs), action, reward, terminated)
+        replay_buffer.push(preprocess_obs(obs), action, transform_reward(reward), terminated)
         if terminated:
             obs, _ = env.reset()
             done = False
@@ -385,8 +390,9 @@ def train(cfg: Config):
             action, _ = policy(obs, eval=False)
             next_obs, reward, done, truncated, info = env.step(action)
             terminated = done or truncated
-            replay_buffer.push(preprocess_obs(obs), action, reward, terminated)
-            current_return += float(reward)
+            transformed_reward = transform_reward(reward)
+            replay_buffer.push(preprocess_obs(obs), action, transformed_reward, terminated)
+            current_return += float(transformed_reward)
             if terminated:
                 episode_returns.append(current_return)
                 if len(episode_returns) > 100:
@@ -401,7 +407,7 @@ def train(cfg: Config):
             else:
                 obs = next_obs
 
-        if (iteration + 1) % cfg.batch_size == 0:
+        if (iteration + 1) % cfg.update_freq == 0:
             observations, actions, rewards, done_flags = replay_buffer.sample(cfg.batch_size, cfg.seq_length)
             done_flags = 1 - done_flags
             obs_images = torch.permute(torch.as_tensor(observations["image"], device=device), (1, 0, 4, 2, 3))

@@ -182,6 +182,7 @@ class PickPlace(BaseEnv):
     def _compute_task_metrics(self) -> Dict[str, torch.Tensor]:
         cube_pos = self.obj.pose.p
         gripper_pos = self._get_end_effector_position()
+
         distance = torch.linalg.norm(cube_pos - gripper_pos, axis=1)
         height = cube_pos[:, 2]
         height_reached = height >= self.lift_success_height
