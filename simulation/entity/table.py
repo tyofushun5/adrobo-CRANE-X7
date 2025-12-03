@@ -23,7 +23,6 @@ TABLE_SCALE = 1.75
 
 
 def _table_quat():
-    """Match ManiSkill table orientation (-90 deg around z)."""
     half = -math.pi / 2
     return math.cos(half), 0.0, 0.0, math.sin(half)
 
