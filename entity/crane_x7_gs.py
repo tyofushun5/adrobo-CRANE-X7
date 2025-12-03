@@ -1,44 +1,22 @@
 import os
-import math
-from typing import Union, Tuple, Dict, Any, Optional
+import sys
+from pathlib import Path
+from typing import Optional
 
 import numpy as np
-import torch
 import genesis as gs
+
+
+try:
+    from entity.table import TABLE_HEIGHT, add_table
+except ModuleNotFoundError:
+    from table import TABLE_HEIGHT, add_table
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.dirname(script_dir)
 
 URDF_PATH = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7_d435.urdf")
-TABLE_PATH = os.path.join(repo_root, "ManiSkill", "mani_skill", "utils", "scene_builder", "table", "assets", "table.glb")
-
-TABLE_HEIGHT = 0.9196429
-TABLE_OFFSET = (0.5, 0.0, -TABLE_HEIGHT)
-TABLE_SCALE = 1.75
-
-
-def _table_quat() -> Tuple[float, float, float, float]:
-    """Match ManiSkill table orientation (-90 deg around z)."""
-    half = -math.pi / 2
-    return math.cos(half), 0.0, 0.0, math.sin(half)
-
-
-def add_table(scene: gs.Scene, surface: Optional[gs.surfaces.Surface] = None):
-    return scene.add_entity(
-        morph=gs.morphs.Mesh(
-            file=TABLE_PATH,
-            scale=TABLE_SCALE,
-            pos=TABLE_OFFSET,
-            quat=_table_quat(),
-            fixed=True,
-            parse_glb_with_zup=False,
-        ),
-        material=None,
-        surface=surface,
-        visualize_contact=False,
-        vis_mode="visual",
-    )
 
 
 class CraneX7(object):
@@ -114,7 +92,7 @@ class CraneX7(object):
 
         self.agent.control_dofs_velocity(vel_cmd, self.wheel_dofs, envs_idx)
 
-    def _init_pose(self, envs_idx=None):
+    def init_pose(self, envs_idx=None):
         """
         Apply ManiSkill-like 'rest' joint pose after scene.build().
         """
@@ -187,18 +165,11 @@ if __name__ == "__main__":
 
     plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -TABLE_HEIGHT)))
     table = add_table(scene)
-    inverted_pendulum = CraneX7(scene, num_envs=num_envs, root_fixed=True)
-    inverted_pendulum.create()
+    crane_x7= CraneX7(scene, num_envs=num_envs, root_fixed=True)
+    crane_x7.create()
 
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
-    inverted_pendulum._init_pose()
-    # cam.start_recording()
+    crane_x7.init_pose()
 
     for i in range(100000):
         scene.step()
-    #     cam.set_pose(
-    #         pos    = (3.0 * np.sin(i / 60), 3.0 * np.cos(i / 60), 2.5),
-    #         lookat = (0, 0, 0.5),
-    #     )
-    #     cam.render()
-    # cam.stop_recording(save_to_filename='video.mp4', fps=60)
