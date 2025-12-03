@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from envs import custom_env as pickplace_env
-from robot.crane_x7 import CraneX7
+from entity.crane_x7 import CraneX7
 
 from dreamer_v2 import (
     Agent,

@@ -278,7 +278,7 @@ class CraneX7(BaseAgent):
     #             fov=np.deg2rad(69),
     #             near=0.01,
     #             far=10.0,
-    #             mount=self.robot.links_map["crane_x7_gripper_base_link"],
+    #             mount=self.entity.links_map["crane_x7_gripper_base_link"],
     #         )
     #     ]
 

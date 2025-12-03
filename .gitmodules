@@ -1,4 +1,6 @@
-[submodule "robot/crane_x7_description"]
-	path = robot/crane_x7_description
+[submodule "ManiSkill"]
+	path = ManiSkill
+	url = https://github.com/haosulab/ManiSkill
+[submodule "crane_x7_description"]
+	path = crane_x7_description
 	url = https://github.com/tyofushun5/crane_x7_description.git
-

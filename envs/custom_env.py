@@ -5,7 +5,7 @@ import sapien
 import torch
 import torch.random
 
-from robot.crane_x7 import CraneX7
+from entity.crane_x7 import CraneX7
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils

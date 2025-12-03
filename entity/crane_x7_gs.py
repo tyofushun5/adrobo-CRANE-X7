@@ -10,11 +10,41 @@ import genesis as gs
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-MJCF_PATH = os.path.join(script_dir, "crane_x7.xml")
+repo_root = os.path.dirname(script_dir)
+
+URDF_PATH = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7_d435.urdf")
+TABLE_PATH = os.path.join(repo_root, "ManiSkill", "mani_skill", "utils", "scene_builder", "table", "assets", "table.glb")
+
+TABLE_HEIGHT = 0.9196429
+TABLE_OFFSET = (0.5, 0.0, -TABLE_HEIGHT)
+TABLE_SCALE = 1.75
+
+
+def _table_quat() -> Tuple[float, float, float, float]:
+    """Match ManiSkill table orientation (-90 deg around z)."""
+    half = -math.pi / 2
+    return math.cos(half), 0.0, 0.0, math.sin(half)
+
+
+def add_table(scene: gs.Scene, surface: Optional[gs.surfaces.Surface] = None):
+    return scene.add_entity(
+        morph=gs.morphs.Mesh(
+            file=TABLE_PATH,
+            scale=TABLE_SCALE,
+            pos=TABLE_OFFSET,
+            quat=_table_quat(),
+            fixed=True,
+            parse_glb_with_zup=False,
+        ),
+        material=None,
+        surface=surface,
+        visualize_contact=False,
+        vis_mode="visual",
+    )
 
 
 class CraneX7(object):
-    def __init__(self, scene: gs.Scene = None, num_envs: int = 1):
+    def __init__(self, scene: gs.Scene = None, num_envs: int = 1, urdf_path: Optional[str] = None, root_fixed: bool = True):
         super().__init__()
         self.agent = None
         self.arm_joint_names = [
@@ -33,6 +63,8 @@ class CraneX7(object):
         self.wheel_dofs = None
         self.pipe_dof = None
         self.scene = scene
+        self.urdf_path = urdf_path or URDF_PATH
+        self.root_fixed = root_fixed
         self.surfaces = gs.surfaces.Default(
             color=(0.0, 0.0, 0.0),
             opacity=1.0,
@@ -41,19 +73,24 @@ class CraneX7(object):
             emissive=None
         )
 
-    def create(self):
+    def create(self, urdf_path: Optional[str] = None, root_fixed: Optional[bool] = None):
+        urdf_path = self.urdf_path if urdf_path is None else urdf_path
+        root_fixed = self.root_fixed if root_fixed is None else root_fixed
+
+        morph = gs.morphs.URDF(
+            file=urdf_path,
+            decimate=True,
+            decimate_face_num=2000,
+            decimate_aggressiveness=5,
+            convexify=True,
+            visualization=True,
+            collision=True,
+            requires_jac_and_IK=True,
+            fixed=root_fixed,
+        )
+
         self.agent = self.scene.add_entity(
-            morph=gs.morphs.MJCF(
-                file=MJCF_PATH,
-                decimate=False,
-                # scale=1.0,
-                # pos=(0.0, 0.0, 0.0),
-                # euler=None,
-                convexify=False,
-                visualization=True,
-                collision=True,
-                requires_jac_and_IK=True,
-            ),
+            morph=morph,
             material=None,
             surface=None,
             visualize_contact=False,
@@ -85,10 +122,12 @@ if __name__ == "__main__":
         precision = '32',
         debug = False,
         eps = 1e-12,
-        backend = gs.cpu,
+        backend = gs.gpu,
         theme = 'dark',
         logger_verbose_time = False
     )
+
+    num_envs = 6
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -124,17 +163,17 @@ if __name__ == "__main__":
                 {"type": "directional", "dir": (-0.6, -0.7, -1.0), "color": (1.0, 0.98, 0.95), "intensity": 3.0},
                 {"type": "directional", "dir": (0.4, 0.1, -1.0), "color": (0.9, 0.95, 1.0), "intensity": 1.5},
             ],
-            rendered_envs_idx=[0],
+            rendered_envs_idx=list(range(num_envs)),
         ),
         renderer=gs.renderers.Rasterizer(),
     )
 
-    plane = scene.add_entity(gs.morphs.Plane())
-    num = 1
-    inverted_pendulum = CraneX7(scene, num_envs=num)
+    plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -TABLE_HEIGHT)))
+    table = add_table(scene)
+    inverted_pendulum = CraneX7(scene, num_envs=num_envs, root_fixed=True)
     inverted_pendulum.create()
 
-    scene.build(n_envs=num, env_spacing=(0.5, 0.5))
+    scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
     # cam.start_recording()
 
     for i in range(100000):

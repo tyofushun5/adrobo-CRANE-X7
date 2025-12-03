@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 import custom_env
-from robot.crane_x7 import CraneX7
+from entity.crane_x7 import CraneX7
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "tmp")
@@ -59,7 +59,7 @@ def main():
     CraneX7.urdf_path = os.path.abspath(
         os.path.join(
             PROJECT_ROOT,
-            "robot",
+            "entity",
             "crane_x7_description",
             "urdf",
             "crane_x7_d435.urdf",
