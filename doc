@@ -18,5 +18,3 @@ python -m mani_skill.utils.download_asset --list "scene"
 python -m mani_skill.utils.download_asset ReplicaCAD # small scene and fast to download
 python -m mani_skill.utils.download_asset RoboCasa # lots of procedurally generated scenes and fast to download
 python -m mani_skill.utils.download_asset AI2THOR # lots of scenes and slow to download
-
-

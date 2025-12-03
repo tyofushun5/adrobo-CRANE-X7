@@ -9,6 +9,7 @@ from mani_skill.agents.controllers import deepcopy_dict
 from mani_skill.agents.registration import register_agent
 from mani_skill.sensors.camera import CameraConfig
 
+
 BASE_DIR = Path(__file__).resolve().parent
 URDF_PATH = BASE_DIR / "crane_x7_description" / "urdf" / "crane_x7_d435.urdf"
 
@@ -121,7 +122,7 @@ class CraneX7(BaseAgent):
             use_target=False,
             interpolate=True,
             normalize_action=True,
-            frame="root_translation",
+            frame="crane_x7_gripper_base_link",
         )
 
         gripper_pd_joint_pos = PDJointPosMimicControllerConfig(
@@ -280,3 +281,4 @@ class CraneX7(BaseAgent):
     #             mount=self.robot.links_map["crane_x7_gripper_base_link"],
     #         )
     #     ]
+
