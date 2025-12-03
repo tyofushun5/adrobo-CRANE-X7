@@ -1,11 +1,9 @@
-import abc
 import os
 import math
 from typing import Union, Tuple, Dict, Any, Optional
 
 import numpy as np
 import torch
-
 import genesis as gs
 
 
@@ -47,6 +45,7 @@ class CraneX7(object):
     def __init__(self, scene: gs.Scene = None, num_envs: int = 1, urdf_path: Optional[str] = None, root_fixed: bool = True):
         super().__init__()
         self.agent = None
+        self.num_envs = num_envs
         self.arm_joint_names = [
             "crane_x7_shoulder_fixed_part_pan_joint",
             "crane_x7_shoulder_revolute_part_tilt_joint",
@@ -115,6 +114,24 @@ class CraneX7(object):
 
         self.agent.control_dofs_velocity(vel_cmd, self.wheel_dofs, envs_idx)
 
+    def _init_pose(self, envs_idx=None):
+        """
+        Apply ManiSkill-like 'rest' joint pose after scene.build().
+        """
+        if envs_idx is None:
+            n_envs = getattr(self.scene, "n_envs", self.num_envs)
+            envs_idx = np.arange(n_envs)
+        envs_idx = np.r_[envs_idx]
+
+        joint_order = self.arm_joint_names + self.gripper_joint_names
+        joint_indices = [self.agent.get_joint(name).dof_idx_local for name in joint_order]
+        rest_qpos = np.array(
+            [0.0, np.pi / 8, 0.0, -np.pi * 5 / 8, 0.0, -np.pi / 2, np.pi / 2, 0.0, 0.0],
+            dtype=np.float64,
+        )
+        rest_qpos = np.tile(rest_qpos, (len(envs_idx), 1))
+        self.agent.set_dofs_position(rest_qpos, joint_indices, zero_velocity=True, envs_idx=envs_idx.tolist())
+
 if __name__ == "__main__":
 
     gs.init(
@@ -127,7 +144,7 @@ if __name__ == "__main__":
         logger_verbose_time = False
     )
 
-    num_envs = 6
+    num_envs = 2
 
     scene = gs.Scene(
         sim_options=gs.options.SimOptions(
@@ -174,6 +191,7 @@ if __name__ == "__main__":
     inverted_pendulum.create()
 
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
+    inverted_pendulum._init_pose()
     # cam.start_recording()
 
     for i in range(100000):
