@@ -1,5 +1,3 @@
-from typing import Tuple
-
 import numpy as np
 
 
@@ -7,7 +5,7 @@ class ReplayBuffer:
     def __init__(
         self,
         capacity: int,
-        image_shape: Tuple[int, int, int],
+        image_shape,
         joint_dim: int,
         action_dim: int,
     ):

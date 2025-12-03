@@ -1,11 +1,10 @@
 import math
 import os
-from typing import Optional, Tuple
 
 import genesis as gs
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-repo_root = os.path.dirname(script_dir)
+repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 
 TABLE_PATH = os.path.join(
     repo_root,
@@ -23,7 +22,7 @@ TABLE_OFFSET = (0.5, 0.0, -TABLE_HEIGHT)
 TABLE_SCALE = 1.75
 
 
-def _table_quat() -> Tuple[float, float, float, float]:
+def _table_quat():
     """Match ManiSkill table orientation (-90 deg around z)."""
     half = -math.pi / 2
     return math.cos(half), 0.0, 0.0, math.sin(half)
@@ -32,10 +31,10 @@ def _table_quat() -> Tuple[float, float, float, float]:
 class Table:
     def __init__(
         self,
-        surface: Optional[gs.surfaces.Surface] = None,
-        offset: Tuple[float, float, float] = TABLE_OFFSET,
+        surface=None,
+        offset=TABLE_OFFSET,
         scale: float = TABLE_SCALE,
-        quat: Optional[Tuple[float, float, float, float]] = None,
+        quat=None,
         path: str = TABLE_PATH,
     ):
         self.surface = surface
@@ -61,5 +60,5 @@ class Table:
         )
 
 
-def add_table(scene: gs.Scene, surface: Optional[gs.surfaces.Surface] = None):
+def add_table(scene: gs.Scene, surface=None):
     return Table(surface=surface).create(scene)

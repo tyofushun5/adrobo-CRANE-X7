@@ -1,26 +1,20 @@
 import os
-import sys
-from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import genesis as gs
 
 
-try:
-    from entity.table import TABLE_HEIGHT, add_table
-except ModuleNotFoundError:
-    from table import TABLE_HEIGHT, add_table
+from simulation.entity.table import TABLE_HEIGHT, add_table
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
-repo_root = os.path.dirname(script_dir)
+repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 
 URDF_PATH = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7_d435.urdf")
 
 
 class CraneX7(object):
-    def __init__(self, scene: gs.Scene = None, num_envs: int = 1, urdf_path: Optional[str] = None, root_fixed: bool = True):
+    def __init__(self, scene: gs.Scene = None, num_envs: int = 1, urdf_path=None, root_fixed: bool = True):
         super().__init__()
         self.agent = None
         self.num_envs = num_envs
@@ -50,7 +44,7 @@ class CraneX7(object):
             emissive=None
         )
 
-    def create(self, urdf_path: Optional[str] = None, root_fixed: Optional[bool] = None):
+    def create(self, urdf_path=None, root_fixed=None):
         urdf_path = self.urdf_path if urdf_path is None else urdf_path
         root_fixed = self.root_fixed if root_fixed is None else root_fixed
 

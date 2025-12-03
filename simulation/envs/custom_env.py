@@ -1,11 +1,9 @@
-from typing import Any, Dict, Union
-
 import numpy as np
 import sapien
 import torch
 import torch.random
 
-from entity.crane_x7 import CraneX7
+from simulation.entity.crane_x7 import CraneX7
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
@@ -19,7 +17,6 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 @register_env("PickPlace-CRANE-X7", max_episode_steps=500)
 class PickPlace(BaseEnv):
     SUPPORTED_ROBOTS = ["CRANE-X7"]
-    agent: Union[CraneX7]
 
     goal_radius = 0.1
     cube_half_size = 0.02
@@ -142,7 +139,7 @@ class PickPlace(BaseEnv):
             "ee_position": self._get_end_effector_position(),
         }
 
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
+    def compute_dense_reward(self, obs, action: torch.Tensor, info: dict):
         metrics = self._compute_task_metrics()
         distance = metrics["distance"]
         cube_height = metrics["cube_height"]
@@ -168,9 +165,7 @@ class PickPlace(BaseEnv):
         reward[success] = 10.0
         return reward
 
-    def compute_normalized_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: dict
-    ):
+    def compute_normalized_dense_reward(self, obs, action: torch.Tensor, info: dict):
         return self.compute_dense_reward(obs=obs, action=action, info=info) / 5.0
 
     def get_state_dict(self):
@@ -179,7 +174,7 @@ class PickPlace(BaseEnv):
     def set_state_dict(self, state):
         super().set_state_dict(state)
 
-    def _compute_task_metrics(self) -> Dict[str, torch.Tensor]:
+    def _compute_task_metrics(self):
         cube_pos = self.obj.pose.p
         gripper_pos = self._get_end_effector_position()
 

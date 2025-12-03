@@ -1,10 +1,8 @@
-from typing import Dict
-
 import numpy as np
 import torch
 
 
-def preprocess_obs(obs: Dict[str, np.ndarray]):
+def preprocess_obs(obs):
     image = obs["image"].astype(np.float32)
     image = np.nan_to_num(image, nan=0.0, posinf=255.0, neginf=0.0)
     image = image / 255.0 - 0.5

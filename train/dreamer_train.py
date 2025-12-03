@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-from typing import Any, Dict, Tuple, List
 
 import gymnasium as gym
 import numpy as np
@@ -13,8 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from envs import custom_env as pickplace_env
-from entity.crane_x7 import CraneX7
+from simulation.entity import CraneX7
 
 from dreamer_v2 import (
     Agent,
@@ -34,7 +32,7 @@ from dreamer_v2.distributions import MSE
 from dreamer_v2.tools.set_seed import set_seed
 
 
-def to_numpy(array: Any) -> np.ndarray:
+def to_numpy(array) -> np.ndarray:
     if isinstance(array, torch.Tensor):
         return array.detach().cpu().numpy()
     return np.asarray(array)
@@ -84,7 +82,7 @@ class HandCameraWrapper(gym.Wrapper):
             }
         )
 
-    def _extract_rgb(self, obs: Dict[str, Any]) -> np.ndarray:
+    def _extract_rgb(self, obs) -> np.ndarray:
         camera_dict = obs["sensor_data"]["base_camera"]
         rgb = to_numpy(camera_dict["rgb"])
         if rgb.ndim == 4:
@@ -98,7 +96,7 @@ class HandCameraWrapper(gym.Wrapper):
         )
         return rgb_tensor.squeeze(0).permute(1, 2, 0).byte().numpy()
 
-    def _extract_joint(self, obs: Dict[str, Any]) -> np.ndarray:
+    def _extract_joint(self, obs) -> np.ndarray:
         joint = obs.get("agent", {}).get("joint_pos", None)
         if joint is None:
             joint = self.env.agent.robot.get_qpos()
@@ -129,7 +127,7 @@ class HandCameraWrapper(gym.Wrapper):
         )
 
     @staticmethod
-    def _convert_info(info: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_info(info):
         converted = {}
         for key, value in info.items():
             if isinstance(value, torch.Tensor):
@@ -154,7 +152,7 @@ def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) 
             return "gpu" if sim_choice not in {"cpu", "physx_cpu"} else "cpu"
         return requested_render
 
-    candidate_pairs: List[Tuple[str, str]] = []
+    candidate_pairs = []
     seen_pairs = set()
 
     def add_candidate(sim_choice: str, render_choice: str) -> None:
@@ -175,7 +173,7 @@ def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) 
         if requested_sim not in {"cpu", "physx_cpu"}:
             add_candidate("cpu", "cpu")
 
-    errors: List[Tuple[str, str, Exception]] = []
+    errors = []
     for sim_option, render_option in candidate_pairs:
         try:
             base_env = gym.make(

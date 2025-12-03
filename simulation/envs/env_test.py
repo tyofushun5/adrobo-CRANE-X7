@@ -1,18 +1,16 @@
 import os
 from datetime import datetime
-from typing import Optional, Mapping, Any
 import gymnasium as gym
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-import custom_env
-from entity.crane_x7 import CraneX7
+from simulation.entity.crane_x7 import CraneX7
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "tmp")
 
-def to_hwc_image(frame: Any):
+def to_hwc_image(frame):
     if isinstance(frame, (list, tuple)):
         frame = frame[0]
 
@@ -33,7 +31,7 @@ def to_hwc_image(frame: Any):
     return frame
 
 
-def get_hand_camera_rgb(obs: Mapping[str, Any]):
+def get_hand_camera_rgb(obs):
     sensor_data = obs.get("sensor_data", {})
     rgb = sensor_data["base_camera"].get("rgb")
     return to_hwc_image(rgb)

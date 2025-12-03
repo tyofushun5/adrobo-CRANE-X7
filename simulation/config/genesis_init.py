@@ -35,13 +35,15 @@ class GenesisConfig(object):
 
         self.scene = None
 
+    def gs_init(self):
+
         gs.init(
             seed = self.seed,
             precision = self.precision,
             debug = False,
             eps = 1e-12,
             logging_level = self.logging_level,
-            backend = gs.cpu if device == 'cpu' else gs.gpu,
+            backend = gs.cpu if self.device == 'cpu' else gs.gpu,
             theme = 'dark',
             logger_verbose_time = False
         )

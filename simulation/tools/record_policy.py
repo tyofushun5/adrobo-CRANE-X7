@@ -1,6 +1,5 @@
 import argparse
 import os
-from typing import Optional
 
 import gymnasium as gym
 import imageio.v2 as imageio
@@ -14,7 +13,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.sys.modules["__main__"] = dp
 
 
-def load_agent(checkpoint: str) -> Optional[dp.Agent]:
+def load_agent(checkpoint: str):
     if not os.path.exists(checkpoint):
         return None
     obj = torch.load(checkpoint, map_location="cpu")
@@ -36,7 +35,7 @@ def to_frame_array(frame) -> np.ndarray:
     return np.asarray(frame)
 
 
-def record_episode(agent: Optional[dp.Agent], output: str, steps: int, fps: int) -> None:
+def record_episode(agent, output: str, steps: int, fps: int) -> None:
     base_env = gym.make(
         "PickPlace-CRANE-X7",
         control_mode="pd_ee_delta_pos_xy_clip",
