@@ -5,8 +5,6 @@ import genesis as gs
 import torch
 
 
-
-
 class Environment(VectorEnv):
     def __init__(self, num_envs=1,
                  max_steps=1000,
