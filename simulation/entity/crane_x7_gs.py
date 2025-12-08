@@ -17,6 +17,15 @@ class CraneX7(object):
         super().__init__()
         self.crane_x7 = None
         self.num_envs = num_envs
+        self.max_delta = 0.01
+        self.workspace_min = np.array([0.30, -0.08, 0.18], dtype=np.float64)
+        self.workspace_max = np.array([0.40, 0.08, 0.26], dtype=np.float64)
+        self.table_z = 0.20
+
+        self.default_ee_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        self._ee_cache = None
+        # 初期姿勢からの関節偏差を制限（過大な回転を抑制）
+        self.max_joint_delta = np.array([1.2] * 7, dtype=np.float64)
 
         self.arm_joint_names = [
             "crane_x7_shoulder_fixed_part_pan_joint",
@@ -105,15 +114,55 @@ class CraneX7(object):
         self,
         target,
         envs_idx=None,
-        control_mode: str = "joint",
-        target_quat=None,
-        ee_link_name: str = "crane_x7_gripper_base_link",
+            control_mode: str = "joint",
+            target_quat=None,
+            ee_link_name: str = "crane_x7_gripper_base_link",
     ):
         if envs_idx is None:
             n_envs = getattr(self.scene, "n_envs", self.num_envs)
             envs_idx = list(range(n_envs))
         else:
             envs_idx = np.r_[envs_idx].tolist()
+
+        if control_mode in ("delta_xy", "delta_xyz"):
+            delta = np.asarray(target, dtype=np.float64)
+            if delta.ndim == 1:
+                delta = delta.reshape(1, -1)
+            if control_mode == "delta_xy" and delta.shape[1] != 2:
+                raise ValueError(f"delta_xy expects shape (2,), got {delta.shape}")
+            if control_mode == "delta_xyz" and delta.shape[1] != 3:
+                raise ValueError(f"delta_xyz expects shape (3,), got {delta.shape}")
+
+            if self._ee_cache is None:
+                mid = 0.5 * (self.workspace_min + self.workspace_max)
+                mid[2] = self.table_z
+                self._ee_cache = np.tile(mid, (self.num_envs, 1))
+
+            delta = np.clip(delta, -1.0, 1.0) * self.max_delta
+            targets = []
+            for idx, d in enumerate(delta):
+                env_idx = envs_idx[idx] if idx < len(envs_idx) else envs_idx[0]
+                curr_pos = self._ee_cache[env_idx].copy()
+                tgt = curr_pos.copy()
+                if control_mode == "delta_xy":
+                    tgt[:2] += d[:2]
+                    tgt[2] = self.table_z
+                else:
+                    tgt[:3] += d[:3]
+                tgt = np.clip(tgt, self.workspace_min, self.workspace_max)
+                self._ee_cache[env_idx] = tgt
+                targets.append(tgt)
+
+            target = np.stack(targets, axis=0)
+            if target.shape[0] == 1 and len(envs_idx) > 1:
+                target = np.tile(target, (len(envs_idx), 1))
+            return self.action(
+                target=target[: len(envs_idx)],
+                envs_idx=envs_idx,
+                control_mode="ik",
+                target_quat=self.default_ee_quat if target_quat is None else target_quat,
+                ee_link_name=ee_link_name,
+            )
 
         if control_mode == "joint":
             target_qpos = np.asarray(target, dtype=np.float64)
@@ -125,7 +174,6 @@ class CraneX7(object):
             self.crane_x7.control_dofs_position(target_qpos, self.all_joint_dofs_idx, envs_idx)
             return
 
-        # IK mode
         target_pos = np.asarray(target, dtype=np.float64)
         target_quat = None if target_quat is None else np.asarray(target_quat, dtype=np.float64)
 
@@ -152,6 +200,16 @@ class CraneX7(object):
             dofs_idx_local=self.arm_dofs_idx,
             envs_idx=envs_idx,
         )
+        # Ensure numpy array for post-processing
+        ik_qpos = np.asarray(ik_qpos, dtype=np.float64)
+        # Keep wrist roll near rest to avoid undesired flipping (fix orientation downward)
+        wrist_idx_local = self.arm_dofs_idx[6]  # wrist joint is the last arm dof
+        ik_qpos[:, wrist_idx_local] = self.rest_qpos[6]
+        # Clamp arm joints around rest to avoid excessive link rotation
+        rest_arm = self.rest_qpos[:7]
+        deltas = ik_qpos[:, :7] - rest_arm
+        deltas = np.clip(deltas, -self.max_joint_delta, self.max_joint_delta)
+        ik_qpos[:, :7] = rest_arm + deltas
         self.crane_x7.control_dofs_position(ik_qpos, self.all_joint_dofs_idx, envs_idx)
 
     def init_pose(self, envs_idx=None):
@@ -167,10 +225,19 @@ class CraneX7(object):
             zero_velocity=True,
             envs_idx=envs_idx.tolist(),
         )
+        # Reset EE cache to the workspace midpoint so that delta control starts near rest
+        midpoint = 0.5 * (self.workspace_min + self.workspace_max)
+        midpoint[2] = self.table_z
+        self._ee_cache = np.tile(midpoint, (self.num_envs, 1))
 
 if __name__ == "__main__":
     num_envs = 1
-    mode = "ik"  # "ik" or "joint_demo"
+    # Modes:
+    # - "delta_xy": DayDreamer風 XY 平面移動（[-1,1]^2 を 20mm スケール、Z固定）
+    # - "delta_xyz": DayDreamer風 XYZ 移動（[-1,1]^3 を 20mm スケール）
+    # - "ik": 絶対位置IKデモ
+    # - "joint_demo": 関節コマンドデモ
+    mode = "delta_xy"
     target_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     show_viewer = True
 
@@ -179,7 +246,7 @@ if __name__ == "__main__":
         precision = '32',
         debug = False,
         eps = 1e-12,
-        backend = gs.gpu,
+        backend = gs.cpu,
         theme = 'dark',
         logger_verbose_time = False
     )
@@ -232,7 +299,21 @@ if __name__ == "__main__":
     crane_x7.set_gain()
     crane_x7.init_pose()
 
-    if mode == "ik":
+    if mode in ("delta_xy", "delta_xyz"):
+        num_steps = 8000
+        rng = np.random.default_rng(0)
+        for _ in range(num_steps):
+            if mode == "delta_xy":
+                action = rng.uniform(-1.0, 1.0, size=(2,))
+            else:
+                action = rng.uniform(-1.0, 1.0, size=(3,))
+            crane_x7.action(
+                target=action,
+                control_mode=mode,
+                target_quat=target_quat,
+            )
+            scene.step()
+    elif mode == "ik":
         # DayDreamer 実験用: ワークスペースをなめるIKスイープ
         traj = []
         # 前方 x-z グリッド
