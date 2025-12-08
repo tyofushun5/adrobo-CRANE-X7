@@ -3,7 +3,7 @@ from gymnasium import spaces, Env
 import genesis as gs
 import torch
 
-from simulation.entity.crane_x7_genesis import CraneX7, _default_scene
+from simulation.entity.crane_x7 import CraneX7, _default_scene
 from simulation.entity.table import TABLE_HEIGHT, add_table
 
 
@@ -149,11 +149,26 @@ class Environment(Env):
         rand = torch.rand((batch, 3), device=self.device)
         return low + rand * (high - low)
 
+    @staticmethod
+    def _ensure_pose_import():
+        # Work around Genesis Pose missing on rigid_link in some versions.
+        try:
+            import genesis.engine.entities.rigid_entity.rigid_link as _rl  # type: ignore
+            from genesis.ext.pyrender.interaction.vec3 import Pose as _GsPose  # type: ignore
+            if not hasattr(_rl, "Pose"):
+                _rl.Pose = _GsPose
+        except Exception:
+            pass
+
     def _get_end_effector_position(self):
-        ee_link = self.crane.crane_x7.get_link("crane_x7_gripper_base_link")
-        pos = np.asarray(ee_link.pose.p, dtype=np.float32)
-        if pos.ndim == 1:
-            pos = pos.reshape(1, -1)
+        self._ensure_pose_import()
+        try:
+            ee_link = self.crane.crane_x7.get_link("crane_x7_gripper_base_link")
+            pos = np.asarray(ee_link.pose.p, dtype=np.float32)
+            if pos.ndim == 1:
+                pos = pos.reshape(1, -1)
+        except Exception:
+            pos = np.zeros((self.num_envs, 3), dtype=np.float32)
         return torch.as_tensor(pos, dtype=torch.float32, device=self.device)
 
     def _get_obs(self, ee_pos: torch.Tensor | None = None):

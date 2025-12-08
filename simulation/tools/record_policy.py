@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from simulation.envs.custom_env_genesis import Environment
+from simulation.envs.custom_env import Environment
 
 
 def parse_args() -> argparse.Namespace:
