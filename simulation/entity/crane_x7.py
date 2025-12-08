@@ -10,8 +10,9 @@ from mani_skill.agents.registration import register_agent
 from mani_skill.sensors.camera import CameraConfig
 
 
-BASE_DIR = Path(__file__).resolve().parent
-URDF_PATH = BASE_DIR / "crane_x7_description" / "urdf" / "crane_x7_d435.urdf"
+# プロジェクトルートを基準に URDF を参照する
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+URDF_PATH = PROJECT_ROOT / "crane_x7_description" / "urdf" / "crane_x7_d435.urdf"
 
 
 @register_agent()
@@ -166,7 +167,6 @@ class CraneX7(BaseAgent):
         Intercept actions for the XY-only EE delta controller to clip workspace
         and zero-out Z displacement before delegating to the controller.
         """
-        print("set_action", self.control_mode, "incoming shape", getattr(action, "shape", None))
         if self.control_mode in {"pd_ee_delta_pos_xy_clip", "pd_ee_delta_pos"}:
             import torch
 
@@ -281,4 +281,3 @@ class CraneX7(BaseAgent):
     #             mount=self.entity.links_map["crane_x7_gripper_base_link"],
     #         )
     #     ]
-

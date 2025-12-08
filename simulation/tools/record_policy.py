@@ -6,7 +6,7 @@ import imageio.v2 as imageio
 import numpy as np
 import torch
 
-from train import dreamer_train as dp
+from simulation.train import train as dp
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

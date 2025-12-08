@@ -12,19 +12,88 @@ repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 URDF_PATH = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7_d435.urdf")
 
 
+def _quat_conj(q):
+    return np.array([q[0], -q[1], -q[2], -q[3]], dtype=np.float64)
+
+
+def _quat_mul(a, b):
+    w1, x1, y1, z1 = a
+    w2, x2, y2, z2 = b
+    return np.array(
+        [
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        ],
+        dtype=np.float64,
+    )
+
+
+def _rotate_vec(q, v):
+    vq = np.concatenate([[0.0], v])
+    return _quat_mul(_quat_mul(q, vq), _quat_conj(q))[1:]
+
+
+def _default_scene(
+    num_envs: int,
+    show_viewer: bool = True,
+):
+    return gs.Scene(
+        sim_options=gs.options.SimOptions(
+            dt=0.01,
+            gravity=(0, 0, -9.81),
+
+        ),
+        rigid_options=gs.options.RigidOptions(
+            enable_joint_limit=True,
+            enable_collision=True,
+            constraint_solver=gs.constraint_solver.Newton,
+            iterations=150,
+            tolerance=1e-6,
+            contact_resolve_time=0.01,
+            use_contact_island=False,
+            use_hibernation=False
+        ),
+        show_viewer=show_viewer,
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=(3.5, 0.0, 2.5),
+            camera_lookat=(0.0, 0.0, 0.5),
+            camera_fov=35,
+        ),
+        vis_options=gs.options.VisOptions(
+            show_world_frame=True,
+            world_frame_size=1.0,
+            show_link_frame=False,
+            show_cameras=False,
+            plane_reflection=True,
+            shadow=True,
+            background_color=(0.02, 0.04, 0.08),
+            ambient_light=(0.12, 0.12, 0.12),
+            lights=[
+                {"type": "directional", "dir": (-0.6, -0.7, -1.0), "color": (1.0, 0.98, 0.95), "intensity": 3.0},
+                {"type": "directional", "dir": (0.4, 0.1, -1.0), "color": (0.9, 0.95, 1.0), "intensity": 1.5},
+            ],
+            rendered_envs_idx=list(range(num_envs)),
+        ),
+        renderer=gs.renderers.Rasterizer(),
+    )
+
+
 class CraneX7(object):
     def __init__(self, scene: gs.Scene = None, num_envs: int = 1, urdf_path=None, root_fixed: bool = True):
         super().__init__()
         self.crane_x7 = None
         self.num_envs = num_envs
-        self.max_delta = 0.01
-        self.workspace_min = np.array([0.30, -0.08, 0.18], dtype=np.float64)
-        self.workspace_max = np.array([0.40, 0.08, 0.26], dtype=np.float64)
+        self.max_delta = 0.01  # 4mm per step to reduce overshoot
+        # ベース寄りかつ横幅を広げ、z を少し下げたワークスペース
+        self.workspace_min = np.array([0.200, -0.140, 0.070], dtype=np.float64)
+        self.workspace_max = np.array([0.420, 0.140, 0.330], dtype=np.float64)
+        self.workspace_margin = 0.02  # clamp inside by this margin to avoid drifting out
         self.table_z = 0.20
-
         self.default_ee_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
         self._ee_cache = None
-        # 初期姿勢からの関節偏差を制限（過大な回転を抑制）
+        # Allow larger deviation from the rest pose soベース側関節も大きく動ける
         self.max_joint_delta = np.array([1.2] * 7, dtype=np.float64)
 
         self.arm_joint_names = [
@@ -95,12 +164,12 @@ class CraneX7(object):
         self.all_joint_dofs_idx = self.arm_dofs_idx + self.gripper_joint_dofs_idx
 
         self.crane_x7.set_dofs_kp(
-            kp=np.array([4500, 4500, 3500, 3500, 2000, 2000, 2000, 100, 100]),
+            kp=np.array([800, 800, 600, 600, 400, 400, 400, 50, 50]),
             dofs_idx_local=self.all_joint_dofs_idx,
         )
 
         self.crane_x7.set_dofs_kv(
-            kv=np.array([450, 450, 350, 350, 200, 200, 200, 10, 10]),
+            kv=np.array([80, 80, 60, 60, 40, 40, 40, 5, 5]),
             dofs_idx_local=self.all_joint_dofs_idx,
         )
 
@@ -118,6 +187,14 @@ class CraneX7(object):
             target_quat=None,
             ee_link_name: str = "crane_x7_gripper_base_link",
     ):
+        try:
+            import genesis.engine.entities.rigid_entity.rigid_link as _rl  # type: ignore
+            from genesis.ext.pyrender.interaction.vec3 import Pose as _GsPose  # type: ignore
+            if not hasattr(_rl, "Pose"):
+                _rl.Pose = _GsPose
+        except Exception:
+            pass
+
         if envs_idx is None:
             n_envs = getattr(self.scene, "n_envs", self.num_envs)
             envs_idx = list(range(n_envs))
@@ -133,25 +210,41 @@ class CraneX7(object):
             if control_mode == "delta_xyz" and delta.shape[1] != 3:
                 raise ValueError(f"delta_xyz expects shape (3,), got {delta.shape}")
 
+            links_map = getattr(self.crane_x7, "links_map", {})
+            base_link = links_map.get("base_link")
+            if base_link is None and links_map:
+                base_link = next(iter(links_map.values()))
+            if base_link is not None:
+                base_pose = base_link.pose
+                base_p = np.array(base_pose.p, dtype=np.float64)
+                base_q = np.array(base_pose.q, dtype=np.float64)
+            else:
+                # Fallback: assume base at origin/world-aligned if links are unavailable
+                base_p = np.zeros(3, dtype=np.float64)
+                base_q = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
+
             if self._ee_cache is None:
-                mid = 0.5 * (self.workspace_min + self.workspace_max)
-                mid[2] = self.table_z
-                self._ee_cache = np.tile(mid, (self.num_envs, 1))
+                mid_base = 0.5 * (self.workspace_min + self.workspace_max)
+                mid_base[2] = self.table_z
+                self._ee_cache = np.tile(mid_base, (self.num_envs, 1))
 
             delta = np.clip(delta, -1.0, 1.0) * self.max_delta
             targets = []
+            ws_min_margin = self.workspace_min + self.workspace_margin
+            ws_max_margin = self.workspace_max - self.workspace_margin
             for idx, d in enumerate(delta):
                 env_idx = envs_idx[idx] if idx < len(envs_idx) else envs_idx[0]
-                curr_pos = self._ee_cache[env_idx].copy()
-                tgt = curr_pos.copy()
+                curr_pos_base = self._ee_cache[env_idx].copy()
+                tgt = curr_pos_base.copy()
                 if control_mode == "delta_xy":
                     tgt[:2] += d[:2]
                     tgt[2] = self.table_z
                 else:
                     tgt[:3] += d[:3]
-                tgt = np.clip(tgt, self.workspace_min, self.workspace_max)
+                tgt = np.clip(tgt, ws_min_margin, ws_max_margin)
                 self._ee_cache[env_idx] = tgt
-                targets.append(tgt)
+                tgt_world = base_p + _rotate_vec(base_q, tgt)
+                targets.append(tgt_world)
 
             target = np.stack(targets, axis=0)
             if target.shape[0] == 1 and len(envs_idx) > 1:
@@ -160,57 +253,125 @@ class CraneX7(object):
                 target=target[: len(envs_idx)],
                 envs_idx=envs_idx,
                 control_mode="ik",
-                target_quat=self.default_ee_quat if target_quat is None else target_quat,
+                # EEフレームをベース姿勢と平行にする
+                target_quat=np.tile(base_q, (len(envs_idx), 1)) if target_quat is None else target_quat,
                 ee_link_name=ee_link_name,
             )
-
-        if control_mode == "joint":
-            target_qpos = np.asarray(target, dtype=np.float64)
-            if target_qpos.ndim == 1:
-                target_qpos = target_qpos.reshape(1, -1)
-            if target_qpos.shape[0] == 1 and len(envs_idx) > 1:
-                target_qpos = np.tile(target_qpos, (len(envs_idx), 1))
-            target_qpos = target_qpos[: len(envs_idx)]
-            self.crane_x7.control_dofs_position(target_qpos, self.all_joint_dofs_idx, envs_idx)
-            return
 
         target_pos = np.asarray(target, dtype=np.float64)
         target_quat = None if target_quat is None else np.asarray(target_quat, dtype=np.float64)
 
         if target_pos.ndim == 1:
             target_pos = target_pos.reshape(1, -1)
+
         if target_pos.shape[0] == 1 and len(envs_idx) > 1:
             target_pos = np.tile(target_pos, (len(envs_idx), 1))
 
-        if target_quat is not None:
-            if target_quat.ndim == 1:
-                target_quat = target_quat.reshape(1, -1)
-            if target_quat.shape[0] == 1 and len(envs_idx) > 1:
-                target_quat = np.tile(target_quat, (len(envs_idx), 1))
+        if target_quat is None:
+            target_quat = np.tile(self.default_ee_quat, (target_pos.shape[0], 1))
+
+        if target_quat.ndim == 1:
+            target_quat = target_quat.reshape(1, -1)
+
+        if target_quat.shape[0] == 1 and len(envs_idx) > 1:
+            target_quat = np.tile(target_quat, (len(envs_idx), 1))
 
         target_pos = target_pos[: len(envs_idx)]
-        if target_quat is not None:
-            target_quat = target_quat[: len(envs_idx)]
-
-        ee_link = self.crane_x7.get_link(ee_link_name)
-        ik_qpos = self.crane_x7.inverse_kinematics(
-            link=ee_link,
-            pos=target_pos,
-            quat=target_quat,
+        target_quat = target_quat[: len(envs_idx)]
+        # Clamp IK target to workspace (apply margin to stay inside box)
+        ws_min_margin = self.workspace_min + self.workspace_margin
+        ws_max_margin = self.workspace_max - self.workspace_margin
+        target_pos = np.clip(target_pos, ws_min_margin, ws_max_margin)
+        rot_mask = [True, True, True]
+        ik_qpos = self.crane_x7.inverse_kinematics_multilink(
+            links=[self.crane_x7.get_link(ee_link_name)],
+            poss=[target_pos],
+            quats=[target_quat],
+            rot_mask=rot_mask,
             dofs_idx_local=self.arm_dofs_idx,
             envs_idx=envs_idx,
         )
-        # Ensure numpy array for post-processing
-        ik_qpos = np.asarray(ik_qpos, dtype=np.float64)
-        # Keep wrist roll near rest to avoid undesired flipping (fix orientation downward)
-        wrist_idx_local = self.arm_dofs_idx[6]  # wrist joint is the last arm dof
-        ik_qpos[:, wrist_idx_local] = self.rest_qpos[6]
-        # Clamp arm joints around rest to avoid excessive link rotation
+
+        if hasattr(ik_qpos, "detach"):
+            ik_qpos = ik_qpos.detach().cpu().numpy()
+        else:
+            ik_qpos = np.asarray(ik_qpos, dtype=np.float64)
         rest_arm = self.rest_qpos[:7]
         deltas = ik_qpos[:, :7] - rest_arm
         deltas = np.clip(deltas, -self.max_joint_delta, self.max_joint_delta)
         ik_qpos[:, :7] = rest_arm + deltas
         self.crane_x7.control_dofs_position(ik_qpos, self.all_joint_dofs_idx, envs_idx)
+
+    def sample_workspace(
+        self,
+        grid=(12, 12, 12),
+        rot_mask=None,
+        target_quat=None,
+        margin=0.0,
+        save_path=None,
+        return_points=True,
+    ):
+        rot_mask = [True, True, True] if rot_mask is None else rot_mask
+        target_quat = self.default_ee_quat if target_quat is None else target_quat
+        ee_link = self.crane_x7.get_link("crane_x7_gripper_base_link")
+
+        ws_min = self.workspace_min + margin
+        ws_max = self.workspace_max - margin
+        xs = np.linspace(ws_min[0], ws_max[0], grid[0])
+        ys = np.linspace(ws_min[1], ws_max[1], grid[1])
+        zs = np.linspace(ws_min[2], ws_max[2], grid[2])
+
+        reachable = []
+        quat = np.asarray(target_quat, dtype=np.float64).reshape(1, -1)
+        for x in xs:
+            for y in ys:
+                for z in zs:
+                    pos = np.array([[x, y, z]], dtype=np.float64)
+                    try:
+                        self.crane_x7.inverse_kinematics_multilink(
+                            links=[ee_link],
+                            poss=[pos],
+                            quats=[quat],
+                            rot_mask=rot_mask,
+                            dofs_idx_local=self.arm_dofs_idx,
+                        )
+                    except Exception:
+                        continue
+                    reachable.append((x, y, z))
+
+        reachable = np.asarray(reachable, dtype=np.float64)
+        if save_path is not None:
+            np.save(save_path, reachable)
+        return reachable if return_points else None
+
+    def visualize_workspace(self, points=None, step=0.01, scene=None):
+        """Visualize reachable points and workspace bounds using visual-only shapes."""
+        scene = self.scene if scene is None else scene
+        if getattr(scene, "_built", False):
+            gs.raise_exception("visualize_workspace must be called before scene.build().")
+        # use non-collision visuals (surface only) so they don't affect physics
+        surf_pts = gs.surfaces.Default(color=(0.0, 0.3, 1.0), opacity=0.6)
+        surf_edge = gs.surfaces.Default(color=(0.0, 1.0, 0.0), opacity=0.5)
+
+        # reached points (optional)
+        if points is not None:
+            for p in points:
+                scene.add_entity(gs.morphs.Sphere(pos=p, radius=0.004), surface=surf_pts)
+
+        # workspace bounding box as a transparent, non-collision box
+        ws_min, ws_max = self.workspace_min, self.workspace_max
+        ws_min_box = ws_min + self.workspace_margin
+        ws_max_box = ws_max - self.workspace_margin
+        scene.add_entity(
+            gs.morphs.Box(
+                lower=tuple(ws_min_box),
+                upper=tuple(ws_max_box),
+                visualization=True,
+                collision=False,
+                fixed=True,
+            ),
+            surface=surf_edge,
+        )
 
     def init_pose(self, envs_idx=None):
         if envs_idx is None:
@@ -225,75 +386,42 @@ class CraneX7(object):
             zero_velocity=True,
             envs_idx=envs_idx.tolist(),
         )
-        # Reset EE cache to the workspace midpoint so that delta control starts near rest
         midpoint = 0.5 * (self.workspace_min + self.workspace_max)
         midpoint[2] = self.table_z
         self._ee_cache = np.tile(midpoint, (self.num_envs, 1))
+        try:
+            ee_pose = self.crane_x7.get_link("crane_x7_gripper_base_link").pose
+            self.default_ee_quat = np.array(ee_pose.q, dtype=np.float64)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
+    os.environ.setdefault("TMPDIR", "/tmp")
     num_envs = 1
-    # Modes:
-    # - "delta_xy": DayDreamer風 XY 平面移動（[-1,1]^2 を 20mm スケール、Z固定）
-    # - "delta_xyz": DayDreamer風 XYZ 移動（[-1,1]^3 を 20mm スケール）
-    # - "ik": 絶対位置IKデモ
-    # - "joint_demo": 関節コマンドデモ
     mode = "delta_xy"
     target_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     show_viewer = True
+    draw_workspace_bounds = True
 
     gs.init(
-        seed = None,
-        precision = '32',
-        debug = False,
-        eps = 1e-12,
-        backend = gs.cpu,
-        theme = 'dark',
-        logger_verbose_time = False
+        seed=None,
+        precision="32",
+        debug=False,
+        eps=1e-12,
+        backend=gs.cpu,
+        theme="dark",
+        logger_verbose_time=False,
     )
 
-    scene = gs.Scene(
-        sim_options=gs.options.SimOptions(
-            dt=0.01,
-            gravity=(0, 0, -9.81),
-        ),
-        rigid_options=gs.options.RigidOptions(
-            enable_joint_limit=True,
-            enable_collision=True,
-            constraint_solver=gs.constraint_solver.Newton,
-            iterations=150,
-            tolerance=1e-6,
-            contact_resolve_time=0.01,
-            use_contact_island=False,
-            use_hibernation=False
-        ),
-        show_viewer=show_viewer,
-        viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.5, 0.0, 2.5),
-            camera_lookat=(0.0, 0.0, 0.5),
-            camera_fov=35,
-        ),
-        vis_options=gs.options.VisOptions(
-            show_world_frame=True,
-            world_frame_size=1.0,
-            show_link_frame=False,
-            show_cameras=False,
-            plane_reflection=True,
-            shadow=True,
-            background_color=(0.02, 0.04, 0.08),
-            ambient_light=(0.12, 0.12, 0.12),
-            lights=[
-                {"type": "directional", "dir": (-0.6, -0.7, -1.0), "color": (1.0, 0.98, 0.95), "intensity": 3.0},
-                {"type": "directional", "dir": (0.4, 0.1, -1.0), "color": (0.9, 0.95, 1.0), "intensity": 1.5},
-            ],
-            rendered_envs_idx=list(range(num_envs)),
-        ),
-        renderer=gs.renderers.Rasterizer(),
-    )
+    scene = _default_scene(num_envs=num_envs, show_viewer=show_viewer)
 
     plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -TABLE_HEIGHT)))
     table = add_table(scene)
     crane_x7 = CraneX7(scene, num_envs=num_envs, root_fixed=True)
     crane_x7.create()
+
+    if draw_workspace_bounds:
+        crane_x7.visualize_workspace(points=None, step=0.015)
 
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
     crane_x7.set_gain()
@@ -314,16 +442,12 @@ if __name__ == "__main__":
             )
             scene.step()
     elif mode == "ik":
-        # DayDreamer 実験用: ワークスペースをなめるIKスイープ
         traj = []
-        # 前方 x-z グリッド
         for x in np.linspace(0.30, 0.45, 4):
             for z in np.linspace(0.12, 0.28, 4):
                 traj.append((x, 0.0, z))
-        # 左右スイープ（Y方向）
         for y in np.linspace(-0.10, 0.10, 5):
             traj.append((0.35, y, 0.20))
-        # 上方へのアーク
         for theta in np.linspace(0.0, np.pi / 2, 6):
             x = 0.32 + 0.1 * np.cos(theta)
             z = 0.14 + 0.12 * np.sin(theta)
@@ -337,39 +461,6 @@ if __name__ == "__main__":
             )
             for _ in range(90):
                 scene.step()
-    else:
-        # 旧デモ: 関節空間の簡易コマンド
-        dofs_idx = crane_x7.all_joint_dofs_idx
-        robot = crane_x7.crane_x7
-        for i in range(1250):
-            if i == 0:
-                robot.control_dofs_position(
-                    np.tile(np.array([1, 1, 0, 0, 0, 0, 0, 0.04, 0.04]), (num_envs, 1)),
-                    dofs_idx,
-                )
-            elif i == 250:
-                robot.control_dofs_position(
-                    np.tile(np.array([-1, 0.8, 1, -2, 1, 0.5, -0.5, 0.04, 0.04]), (num_envs, 1)),
-                    dofs_idx,
-                )
-            elif i == 500:
-                robot.control_dofs_position(
-                    np.tile(np.zeros(9, dtype=np.float64), (num_envs, 1)),
-                    dofs_idx,
-                )
-            elif i == 750:
-                # 最初の自由度を速度で制御し、残りを位置で制御
-                robot.control_dofs_position(
-                    np.tile(np.zeros(8, dtype=np.float64), (num_envs, 1)),
-                    dofs_idx[1:],
-                )
-                robot.control_dofs_velocity(
-                    np.tile(np.array([1.0], dtype=np.float64), (num_envs, 1)),
-                    dofs_idx[:1],
-                )
-            elif i == 1000:
-                robot.control_dofs_force(
-                    np.tile(np.zeros(9, dtype=np.float64), (num_envs, 1)),
-                    dofs_idx,
-                )
+    elif mode == "workspace_vis":
+        while scene.viewer.is_alive():
             scene.step()
