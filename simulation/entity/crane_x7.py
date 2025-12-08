@@ -35,15 +35,12 @@ def _rotate_vec(q, v):
     return _quat_mul(_quat_mul(q, vq), _quat_conj(q))[1:]
 
 
-def _default_scene(
-    num_envs: int,
-    show_viewer: bool = True,
-):
+def _default_scene(num_envs: int, show_viewer: bool = True):
+    """シンプルなシーン初期化。main から直接使う。"""
     return gs.Scene(
         sim_options=gs.options.SimOptions(
             dt=0.01,
             gravity=(0, 0, -9.81),
-
         ),
         rigid_options=gs.options.RigidOptions(
             enable_joint_limit=True,
@@ -95,6 +92,7 @@ class CraneX7(object):
         self._ee_cache = None
         # Allow larger deviation from the rest pose soベース側関節も大きく動ける
         self.max_joint_delta = np.array([1.2] * 7, dtype=np.float64)
+        self.camera = None
 
         self.arm_joint_names = [
             "crane_x7_shoulder_fixed_part_pan_joint",
@@ -157,6 +155,19 @@ class CraneX7(object):
         )
 
         return self.crane_x7
+
+    def add_camera(
+        self,
+        res=(1280, 960),
+        pos=(3.5, 0.0, 2.5),
+        lookat=(0.0, 0.0, 0.5),
+        fov=30.0,
+        gui=False,
+    ):
+        if self.scene is None:
+            raise RuntimeError("Scene must exist before adding a camera.")
+        self.camera = self.scene.add_camera(res=res, pos=pos, lookat=lookat, fov=fov, GUI=gui)
+        return self.camera
 
     def set_gain(self):
         self.arm_dofs_idx = [self.crane_x7.get_joint(name).dof_idx_local for name in self.arm_joint_names]
@@ -402,6 +413,9 @@ if __name__ == "__main__":
     target_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     show_viewer = True
     draw_workspace_bounds = True
+    record_camera = True
+    video_path = os.path.join(repo_root, "videos", "crane_preview.mp4")
+    fps = 30
 
     gs.init(
         seed=None,
@@ -423,9 +437,22 @@ if __name__ == "__main__":
     if draw_workspace_bounds:
         crane_x7.visualize_workspace(points=None, step=0.015)
 
+    if record_camera:
+        os.makedirs(os.path.dirname(video_path), exist_ok=True)
+        cam = crane_x7.add_camera(
+            res=(1280, 960),
+            pos=(3.5, 0.0, 2.5),
+            lookat=(0.0, 0.0, 0.5),
+            fov=30,
+            gui=True,
+        )
+
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
     crane_x7.set_gain()
     crane_x7.init_pose()
+
+    if record_camera and crane_x7.camera is not None:
+        crane_x7.camera.start_recording()
 
     if mode in ("delta_xy", "delta_xyz"):
         num_steps = 8000
@@ -464,3 +491,7 @@ if __name__ == "__main__":
     elif mode == "workspace_vis":
         while scene.viewer.is_alive():
             scene.step()
+
+    if record_camera and crane_x7.camera is not None:
+        crane_x7.camera.stop_recording(save_to_filename=video_path, fps=fps)
+        print(f"Saved camera video to {video_path}")
