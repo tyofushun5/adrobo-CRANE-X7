@@ -9,7 +9,7 @@ from simulation.entity.table import TABLE_HEIGHT, add_table
 script_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 
-URDF_PATH = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7_d435.urdf")
+URDF_PATH = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7.urdf")
 
 
 def _quat_conj(q):
@@ -35,57 +35,14 @@ def _rotate_vec(q, v):
     return _quat_mul(_quat_mul(q, vq), _quat_conj(q))[1:]
 
 
-def _default_scene(num_envs: int, show_viewer: bool = True):
-    """シンプルなシーン初期化。main から直接使う。"""
-    return gs.Scene(
-        sim_options=gs.options.SimOptions(
-            dt=0.01,
-            gravity=(0, 0, -9.81),
-        ),
-        rigid_options=gs.options.RigidOptions(
-            enable_joint_limit=True,
-            enable_collision=True,
-            constraint_solver=gs.constraint_solver.Newton,
-            iterations=150,
-            tolerance=1e-6,
-            contact_resolve_time=0.01,
-            use_contact_island=False,
-            use_hibernation=False
-        ),
-        show_viewer=show_viewer,
-        viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.5, 0.0, 2.5),
-            camera_lookat=(0.0, 0.0, 0.5),
-            camera_fov=35,
-        ),
-        vis_options=gs.options.VisOptions(
-            show_world_frame=True,
-            world_frame_size=1.0,
-            show_link_frame=False,
-            show_cameras=False,
-            plane_reflection=True,
-            shadow=True,
-            background_color=(0.02, 0.04, 0.08),
-            ambient_light=(0.12, 0.12, 0.12),
-            lights=[
-                {"type": "directional", "dir": (-0.6, -0.7, -1.0), "color": (1.0, 0.98, 0.95), "intensity": 3.0},
-                {"type": "directional", "dir": (0.4, 0.1, -1.0), "color": (0.9, 0.95, 1.0), "intensity": 1.5},
-            ],
-            rendered_envs_idx=list(range(num_envs)),
-        ),
-        renderer=gs.renderers.Rasterizer(),
-    )
-
-
 class CraneX7(object):
     def __init__(self, scene: gs.Scene = None, num_envs: int = 1, urdf_path=None, root_fixed: bool = True):
         super().__init__()
         self.crane_x7 = None
         self.num_envs = num_envs
-        self.max_delta = 0.01  # 4mm per step to reduce overshoot
-        # ベース寄りかつ横幅を広げ、z を少し下げたワークスペース
-        self.workspace_min = np.array([0.200, -0.140, 0.070], dtype=np.float64)
-        self.workspace_max = np.array([0.420, 0.140, 0.330], dtype=np.float64)
+        self.max_delta = 0.01
+        self.workspace_min = np.array([0.120, -0.140, 0.070], dtype=np.float64)
+        self.workspace_max = np.array([0.340, 0.140, 0.330], dtype=np.float64)
         self.workspace_margin = 0.02  # clamp inside by this margin to avoid drifting out
         self.table_z = 0.20
         self.default_ee_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
@@ -126,7 +83,7 @@ class CraneX7(object):
         )
 
         self.rest_qpos = np.array(
-            [0.0, np.pi / 8, 0.0, -np.pi * 5 / 8, 0.0, -np.pi / 2, np.pi / 2, 0.0, 0.0],
+            [0.0, np.pi / 8, 0.0, -np.pi * 5 / 8, 0.0, -87 * np.pi / 180.0, np.pi / 2, 0.0, 0.0],
             dtype=np.float64,
         )
 
@@ -311,6 +268,11 @@ class CraneX7(object):
         deltas = ik_qpos[:, :7] - rest_arm
         deltas = np.clip(deltas, -self.max_joint_delta, self.max_joint_delta)
         ik_qpos[:, :7] = rest_arm + deltas
+        # Lock joints we want to stay fixed regardless of IK result.
+        twist_idx = self.arm_dofs_idx[2]  # crane_x7_upper_arm_revolute_part_twist_joint
+        ik_qpos[:, twist_idx] = self.rest_qpos[2]
+        fixed_idx = self.arm_dofs_idx[4]  # crane_x7_lower_arm_fixed_part_joint
+        ik_qpos[:, fixed_idx] = self.rest_qpos[4]
         self.crane_x7.control_dofs_position(ik_qpos, self.all_joint_dofs_idx, envs_idx)
 
     def sample_workspace(
@@ -322,7 +284,7 @@ class CraneX7(object):
         save_path=None,
         return_points=True,
     ):
-        rot_mask = [True, True, True] if rot_mask is None else rot_mask
+        rot_mask = [False, False, True] if rot_mask is None else rot_mask
         target_quat = self.default_ee_quat if target_quat is None else target_quat
         ee_link = self.crane_x7.get_link("crane_x7_gripper_base_link")
 
@@ -427,7 +389,41 @@ if __name__ == "__main__":
         logger_verbose_time=False,
     )
 
-    scene = _default_scene(num_envs=num_envs, show_viewer=show_viewer)
+    scene = gs.Scene(
+        sim_options=gs.options.SimOptions(dt=0.01, gravity=(0.0, 0.0, -9.81)),
+        rigid_options=gs.options.RigidOptions(
+            enable_joint_limit=True,
+            enable_collision=True,
+            constraint_solver=gs.constraint_solver.Newton,
+            iterations=150,
+            tolerance=1e-6,
+            contact_resolve_time=0.01,
+            use_contact_island=False,
+            use_hibernation=False,
+        ),
+        show_viewer=show_viewer,
+        viewer_options=gs.options.ViewerOptions(
+            camera_pos=(3.5, 0.0, 2.5),
+            camera_lookat=(0.0, 0.0, 0.5),
+            camera_fov=35,
+        ),
+        vis_options=gs.options.VisOptions(
+            show_world_frame=True,
+            world_frame_size=1.0,
+            show_link_frame=False,
+            show_cameras=False,
+            plane_reflection=True,
+            shadow=True,
+            background_color=(0.02, 0.04, 0.08),
+            ambient_light=(0.12, 0.12, 0.12),
+            lights=[
+                {"type": "directional", "dir": (-0.6, -0.7, -1.0), "color": (1.0, 0.98, 0.95), "intensity": 3.0},
+                {"type": "directional", "dir": (0.4, 0.1, -1.0), "color": (0.9, 0.95, 1.0), "intensity": 1.5},
+            ],
+            rendered_envs_idx=list(range(num_envs)),
+        ),
+        renderer=gs.renderers.Rasterizer(),
+    )
 
     plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -TABLE_HEIGHT)))
     table = add_table(scene)
@@ -465,7 +461,7 @@ if __name__ == "__main__":
             crane_x7.action(
                 target=action,
                 control_mode=mode,
-                target_quat=target_quat,
+                target_quat=None,
             )
             scene.step()
     elif mode == "ik":

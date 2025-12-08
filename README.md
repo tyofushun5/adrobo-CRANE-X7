@@ -5,7 +5,7 @@ CRANE-X7 マニピュレータを ManiSkill ベースでシミュレーション
 ## リポジトリ構成と依存関係
 - `ManiSkill/` — [haosulab/ManiSkill](https://github.com/haosulab/ManiSkill) のサブモジュールです。初回セットアップ時は `git submodule update --init --recursive` を実行してください。
 - `robot/crane_x7_description/` — 株式会社アールティが提供する CRANE-X7 のロボット記述一式を本リポジトリ内にベンダリングしています。詳細は以下の「ライセンスと再利用条件」を参照してください。
-- `robot/crane_x7_d435.urdf` など、プロジェクト固有に追加した URDF も `robot/` 配下で管理しています。
+- `robot/crane_x7.urdf` など、プロジェクト固有に追加した URDF も `robot/` 配下で管理しています。
 
 ## セットアップ
 ```bash
@@ -21,7 +21,7 @@ Python 依存関係や ManiSkill のビルド方法は ManiSkill サブモジュ
 - 同ディレクトリを再配布する場合は、オリジナルリポジトリ（https://github.com/rt-net/crane_x7_description）へのクレジットと付属ライセンス文書を必ず同梱してください。
 
 ## URDF を追加する際のメモ
-1. 追加したい URDF（例: `crane_x7_435.urdf`）を `robot/crane_x7_description/urdf/` 以下に配置します。
+1. 追加したい URDF（例: `crane_x7.urdf`）を `robot/crane_x7_description/urdf/` 以下に配置します。
 2. 必要に応じて `robot/crane_x7_description/urdf/crane_x7.xacro` などから参照させます。
 3. `git add robot/crane_x7_description` を実行して変更をステージし、通常どおりコミットします。
 

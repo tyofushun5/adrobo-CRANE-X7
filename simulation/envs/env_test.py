@@ -60,7 +60,7 @@ def main():
             "entity",
             "crane_x7_description",
             "urdf",
-            "crane_x7_d435.urdf",
+            "crane_x7.urdf",
         )
     )
     env = gym.make(
