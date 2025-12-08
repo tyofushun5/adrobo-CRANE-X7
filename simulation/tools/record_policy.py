@@ -1,96 +1,51 @@
 import argparse
-import os
+from pathlib import Path
 
-import gymnasium as gym
-import imageio.v2 as imageio
 import numpy as np
-import torch
 
-from simulation.train import train as dp
-
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-os.sys.modules["__main__"] = dp
+from simulation.envs.custom_env_genesis import Environment
 
 
-def load_agent(checkpoint: str):
-    if not os.path.exists(checkpoint):
-        return None
-    obj = torch.load(checkpoint, map_location="cpu")
-    if obj is None:
-        return None
-    if isinstance(obj, torch.nn.Module):
-        obj.to("cpu")
-        obj.eval()
-    return obj
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Genesis 環境で CRANE-X7 のロールアウトを動画保存します。")
+    parser.add_argument("--output", type=str, default="videos/preview.mp4", help="保存先の動画パス")
+    parser.add_argument("--steps", type=int, default=300, help="シミュレーションステップ数")
+    parser.add_argument("--fps", type=int, default=30, help="動画のFPS")
+    parser.add_argument("--device", type=str, default="cpu", help="cpu か gpu")
+    parser.add_argument("--show_viewer", action="store_true", help="Genesis ビューアを表示する場合に指定")
+    return parser.parse_args()
 
 
-def to_frame_array(frame) -> np.ndarray:
-    if isinstance(frame, (list, tuple)):
-        frame = frame[0]
-    if hasattr(frame, "squeeze"):
-        frame = frame.squeeze(0)
-    if isinstance(frame, torch.Tensor):
-        frame = frame.detach().cpu().numpy()
-    return np.asarray(frame)
-
-
-def record_episode(agent, output: str, steps: int, fps: int) -> None:
-    base_env = gym.make(
-        "PickPlace-CRANE-X7",
-        control_mode="pd_ee_delta_pos_xy_clip",
-        render_mode="rgb_array",
-        sim_backend="cpu",
-        render_backend="cpu",
-        robot_uids="CRANE-X7",
-        obs_mode="rgb",
+def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: bool) -> None:
+    # Environment 側で録画をオンにする
+    env = Environment(
+        num_envs=1,
+        max_steps=steps,
+        control_mode="delta_xy",
+        device=device,
+        show_viewer=show_viewer,
+        record=True,
+        video_path=output,
+        fps=fps,
     )
-    env = dp.HandCameraWrapper(base_env, image_size=64)
-    obs, info = env.reset()
 
-    if agent is not None:
-        agent.reset()
-
-    frames = []
-    frames.append(to_frame_array(base_env.render()))
+    obs, _ = env.reset()
 
     for _ in range(steps):
-        if agent is None:
-            action = base_env.action_space.sample()
-        else:
-            action, _ = agent(obs, eval=True)
-        obs, reward, terminated, truncated, info = env.step(action)
-        frames.append(to_frame_array(base_env.render()))
-        if terminated or truncated:
+        action = env.action_space.sample().astype(np.float32)
+        obs, reward, terminated, truncated, info = env.step(action[None, :])
+        if bool(terminated[0]) or bool(truncated[0]):
             break
 
-    output_dir = os.path.dirname(output)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-    with imageio.get_writer(output, fps=fps) as writer:
-        for frame in frames:
-            writer.append_data(frame)
-
     env.close()
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Record PickPlace-CRANE-X7 policy rollout.")
-    parser.add_argument("--checkpoint", type=str, default="dreamer_agent.pth")
-    parser.add_argument("--output", type=str, default="policy_videos/policy_rollout.mp4")
-    parser.add_argument("--steps", type=int, default=10000000)
-    parser.add_argument("--fps", type=int, default=30)
-    return parser.parse_args()
+    print(f"Saved video to: {output}")
 
 
 def main():
     args = parse_args()
-    tmp_dir = os.environ.get("TMPDIR")
-    if not tmp_dir:
-        os.environ["TMPDIR"] = str(PROJECT_ROOT)
-
-    agent = load_agent(args.checkpoint)
-    record_episode(agent, args.output, steps=args.steps, fps=args.fps)
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    record_episode(str(output_path), steps=args.steps, fps=args.fps, device=args.device, show_viewer=args.show_viewer)
 
 
 if __name__ == "__main__":

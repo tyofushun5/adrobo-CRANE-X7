@@ -1,14 +1,13 @@
 import numpy as np
-from gymnasium.vector import VectorEnv
-from gymnasium import spaces
+from gymnasium import spaces, Env
 import genesis as gs
 import torch
 
-from simulation.entity.crane_x7_gs import CraneX7, _default_scene
+from simulation.entity.crane_x7_genesis import CraneX7, _default_scene
 from simulation.entity.table import TABLE_HEIGHT, add_table
 
 
-class Environment(VectorEnv):
+class Environment(Env):
     def __init__(
         self,
         num_envs: int = 1,
@@ -70,6 +69,10 @@ class Environment(VectorEnv):
             high=obs_high,
             dtype=np.float32,
         )
+
+        # gym.Env expects these attributes
+        self.action_space = self.single_action_space
+        self.observation_space = self.single_observation_space
 
         super().__init__()
         self.device = torch.device(device)
