@@ -6,58 +6,49 @@ import genesis as gs
 script_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 
-TABLE_PATH = os.path.join(
-    repo_root,
-    "ManiSkill",
-    "mani_skill",
-    "utils",
-    "scene_builder",
-    "table",
-    "assets",
-    "table.glb",
-)
 
-TABLE_HEIGHT = 0.9196429
-TABLE_OFFSET = (0.5, 0.0, -TABLE_HEIGHT)
-TABLE_SCALE = 1.75
-
-
-def _table_quat():
-    half = -math.pi / 2
-    return math.cos(half), 0.0, 0.0, math.sin(half)
-
-
-class Table:
-    def __init__(
-        self,
-        surface=None,
-        offset=TABLE_OFFSET,
-        scale: float = TABLE_SCALE,
-        quat=None,
-        path: str = TABLE_PATH,
-    ):
+class Table(object):
+    def __init__(self, scene = None, surface=None, offset=(0.5, 0.0, -0.9196429), scale= 1.75):
+        self.table = None
+        self.scene = scene
         self.surface = surface
         self.offset = offset
         self.scale = scale
-        self.quat = _table_quat() if quat is None else quat
-        self.path = path
+        self.__table_height = 0.9196429
+        self.quat = math.cos(-math.pi / 2), 0.0, 0.0, math.sin(-math.pi / 2)
+        self.table_path = os.path.join(repo_root,
+                                        "ManiSkill",
+                                        "mani_skill",
+                                        "utils",
+                                        "scene_builder",
+                                        "table",
+                                        "assets",
+                                        "table.glb",)
 
-    def create(self, scene: gs.Scene):
-        return scene.add_entity(
-            morph=gs.morphs.Mesh(
-                file=self.path,
-                scale=self.scale,
-                pos=self.offset,
-                quat=self.quat,
-                fixed=True,
-                parse_glb_with_zup=False,
-            ),
+    def create(self):
+        morph=gs.morphs.Mesh(
+            file=self.table_path,
+            scale=self.scale,
+            pos=self.offset,
+            quat=self.quat,
+            fixed=True,
+            parse_glb_with_zup=False,
+        )
+
+        self.table = self.scene.add_entity(
+            morph=morph,
             material=None,
             surface=self.surface,
             visualize_contact=False,
             vis_mode="visual",
         )
+        return self.table
 
+    @property
+    def pose(self):
+        return self.table.pose
 
-def add_table(scene: gs.Scene, surface=None):
-    return Table(surface=surface).create(scene)
+    @property
+    def table_height(self):
+        return self.table_height
+

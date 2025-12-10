@@ -3,7 +3,8 @@ import numpy as np
 import genesis as gs
 
 
-from simulation.entity.table import TABLE_HEIGHT, add_table
+from simulation.entity.robot import Robot
+from simulation.entity.table import Table
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,8 +34,8 @@ def _rotate_vec(q, v):
     return _quat_mul(_quat_mul(q, vq), _quat_conj(q))[1:]
 
 
-class CraneX7(object):
-    def __init__(self, scene: gs.Scene = None, num_envs: int = 1, root_fixed: bool = True):
+class CraneX7(Robot):
+    def __init__(self, scene = None, surface=None, num_envs = 1, root_fixed = True):
         super().__init__()
         self.crane_x7 = None
         self.num_envs = num_envs
@@ -69,6 +70,7 @@ class CraneX7(object):
         self.gripper_joint_dofs_idx = None
         self.all_joint_dofs_idx = None
         self.scene = scene
+        self.surface = surface
         self.urdf_path = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7.urdf")
         self.root_fixed = root_fixed
         self.surfaces = gs.surfaces.Default(
@@ -101,7 +103,7 @@ class CraneX7(object):
         self.crane_x7 = self.scene.add_entity(
             morph=morph,
             material=None,
-            surface=None,
+            surface=self.surfaces,
             visualize_contact=False,
             vis_mode="visual",
         )
@@ -244,10 +246,9 @@ class CraneX7(object):
         deltas = ik_qpos[:, :7] - rest_arm
         deltas = np.clip(deltas, -self.max_joint_delta, self.max_joint_delta)
         ik_qpos[:, :7] = rest_arm + deltas
-        # Lock joints we want to stay fixed regardless of IK result.
-        twist_idx = self.arm_dofs_idx[2]  # crane_x7_upper_arm_revolute_part_twist_joint
+        twist_idx = self.arm_dofs_idx[2]
         ik_qpos[:, twist_idx] = self.reset_qpos[2]
-        fixed_idx = self.arm_dofs_idx[4]  # crane_x7_lower_arm_fixed_part_joint
+        fixed_idx = self.arm_dofs_idx[4]
         ik_qpos[:, fixed_idx] = self.reset_qpos[4]
         self.crane_x7.control_dofs_position(ik_qpos, self.all_joint_dofs_idx, envs_idx)
 
@@ -290,23 +291,16 @@ class CraneX7(object):
             np.save(save_path, reachable)
         return reachable if return_points else None
 
-    def visualize_workspace(self, points=None, step=0.01, scene=None):
-        scene = self.scene if scene is None else scene
-        if getattr(scene, "_built", False):
-            gs.raise_exception("visualize_workspace must be called before scene.build().")
+    def workspace(self, step=0.01):
         surf_pts = gs.surfaces.Default(color=(0.0, 0.3, 1.0), opacity=0.6)
         surf_edge = gs.surfaces.Default(color=(0.0, 1.0, 0.0), opacity=0.5)
 
-        # reached points (optional)
-        if points is not None:
-            for p in points:
-                scene.add_entity(gs.morphs.Sphere(pos=p, radius=0.004), surface=surf_pts)
+        ws_min = self.workspace_min
+        ws_max = self.workspace_max
 
-        # workspace bounding box as a transparent, non-collision box
-        ws_min, ws_max = self.workspace_min, self.workspace_max
         ws_min_box = ws_min + self.workspace_margin
         ws_max_box = ws_max - self.workspace_margin
-        scene.add_entity(
+        self.scene.add_entity(
             gs.morphs.Box(
                 lower=tuple(ws_min_box),
                 upper=tuple(ws_max_box),
@@ -391,13 +385,14 @@ if __name__ == "__main__":
         renderer=gs.renderers.Rasterizer(),
     )
 
-    plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -TABLE_HEIGHT)))
-    table = add_table(scene)
+    plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -0.9196429)))
     crane_x7 = CraneX7(scene, num_envs=num_envs, root_fixed=True)
     crane_x7.create()
+    table = Table(scene)
+    table.create()
 
-    if draw_workspace_bounds:
-        crane_x7.visualize_workspace(points=None, step=0.015)
+
+
 
     if record_camera:
         os.makedirs(os.path.dirname(video_path), exist_ok=True)
