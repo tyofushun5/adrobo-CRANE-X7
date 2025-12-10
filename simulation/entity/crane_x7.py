@@ -9,8 +9,6 @@ from simulation.entity.table import TABLE_HEIGHT, add_table
 script_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 
-urdf_path = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7.urdf")
-
 
 def _quat_conj(q):
     return np.array([q[0], -q[1], -q[2], -q[3]], dtype=np.float64)
@@ -36,7 +34,7 @@ def _rotate_vec(q, v):
 
 
 class CraneX7(object):
-    def __init__(self, scene: gs.Scene = None, num_envs: int = 1, urdf_path=None, root_fixed: bool = True):
+    def __init__(self, scene: gs.Scene = None, num_envs: int = 1, root_fixed: bool = True):
         super().__init__()
         self.crane_x7 = None
         self.num_envs = num_envs
@@ -71,7 +69,7 @@ class CraneX7(object):
         self.gripper_joint_dofs_idx = None
         self.all_joint_dofs_idx = None
         self.scene = scene
-        self.urdf_path = urdf_path
+        self.urdf_path = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7.urdf")
         self.root_fixed = root_fixed
         self.surfaces = gs.surfaces.Default(
             color=(0.0, 0.0, 0.0),
@@ -395,7 +393,7 @@ if __name__ == "__main__":
 
     plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -TABLE_HEIGHT)))
     table = add_table(scene)
-    crane_x7 = CraneX7(scene, num_envs=num_envs, urdf_path=urdf_path, root_fixed=True)
+    crane_x7 = CraneX7(scene, num_envs=num_envs, root_fixed=True)
     crane_x7.create()
 
     if draw_workspace_bounds:
