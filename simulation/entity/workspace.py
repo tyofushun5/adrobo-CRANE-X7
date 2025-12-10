@@ -14,5 +14,29 @@ class Workspace(Entity):
         self.scene = scene
         self.surface = surface
 
+        self.workspace_surface = None
+
+        self.point = gs.surfaces.Default(color=(0.0, 0.3, 1.0), opacity=0.6)
+        self.surface_edge = gs.surfaces.Default(color=(0.0, 1.0, 0.0), opacity=0.5)
+
+        self.workspace_min = np.array([0.100, -0.160, 0.070], dtype=np.float64)
+        self.workspace_max = np.array([0.340, 0.160, 0.300], dtype=np.float64)
+        self.workspace_margin = 0.0
+
+        self.workspace_min_box = self.workspace_min + self.workspace_margin
+        self.workspace_max_box = self.workspace_max - self.workspace_margin
+
     def create(self):
-        pass
+        morph = gs.morphs.Box(
+            lower=tuple(self.workspace_min),
+            upper=tuple(self.workspace_max),
+            visualization=True,
+            collision=False,
+            fixed=True,
+        )
+
+        self.workspace_surface = self.scene.add_entity(
+            morph=morph,
+            material=None,
+            surface=self.surface_edge
+        )

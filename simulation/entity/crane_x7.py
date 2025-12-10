@@ -5,6 +5,7 @@ import genesis as gs
 
 from simulation.entity.robot import Robot
 from simulation.entity.table import Table
+from simulation.entity.workspace import Workspace
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -42,12 +43,11 @@ class CraneX7(Robot):
         self.max_delta = 0.01
         self.workspace_min = np.array([0.100, -0.160, 0.070], dtype=np.float64)
         self.workspace_max = np.array([0.340, 0.160, 0.300], dtype=np.float64)
-        self.workspace_margin = 0.0  # clamp inside by this margin to avoid drifting out
-        self.table_z = 0.20
+        self.workspace_margin = 0.0
+        self.table_z = 0.30
         self.default_ee_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
         self._ee_cache = None
         self.max_joint_delta = np.array([1.2] * 7, dtype=np.float64)
-        self.camera = None
 
         self.arm_joint_names = [
             "crane_x7_shoulder_fixed_part_pan_joint",
@@ -64,7 +64,17 @@ class CraneX7(Robot):
             "crane_x7_gripper_finger_b_joint",
         ]
 
-        self.all_joint_names = self.arm_joint_names + self.gripper_joint_names
+        self.all_joint_names = [
+            "crane_x7_shoulder_fixed_part_pan_joint",
+            "crane_x7_shoulder_revolute_part_tilt_joint",
+            "crane_x7_upper_arm_revolute_part_twist_joint",
+            "crane_x7_upper_arm_revolute_part_rotate_joint",
+            "crane_x7_lower_arm_fixed_part_joint",
+            "crane_x7_lower_arm_revolute_part_joint",
+            "crane_x7_wrist_joint",
+            "crane_x7_gripper_finger_a_joint",
+            "crane_x7_gripper_finger_b_joint",
+        ]
 
         self.arm_dofs_idx = None
         self.gripper_joint_dofs_idx = None
@@ -82,7 +92,7 @@ class CraneX7(Robot):
         )
 
         self.reset_qpos = np.array(
-            [0.0, np.pi / 8, 0.0, -np.pi * 5 / 8, 0.0, -np.pi / 2, np.pi / 2, 0.0, 0.0],
+            [0.0, np.pi / 8, 0.0, -np.pi * 5 / 8, 0.0, -np.pi / 2, 0.0, 0.0, 0.0],
             dtype=np.float64,
         )
 
@@ -110,19 +120,6 @@ class CraneX7(Robot):
 
         return self.crane_x7
 
-    def add_camera(
-        self,
-        res=(1280, 960),
-        pos=(3.5, 0.0, 2.5),
-        lookat=(0.0, 0.0, 0.5),
-        fov=30.0,
-        gui=False,
-    ):
-        if self.scene is None:
-            raise RuntimeError("Scene must exist before adding a camera.")
-        self.camera = self.scene.add_camera(res=res, pos=pos, lookat=lookat, fov=fov, GUI=gui)
-        return self.camera
-
     def set_gain(self):
         self.arm_dofs_idx = [self.crane_x7.get_joint(name).dof_idx_local for name in self.arm_joint_names]
         self.gripper_joint_dofs_idx = [self.crane_x7.get_joint(name).dof_idx_local for name in self.gripper_joint_names]
@@ -144,19 +141,7 @@ class CraneX7(Robot):
             dofs_idx_local=self.all_joint_dofs_idx,
         )
 
-    def action(
-        self,
-        target,
-        envs_idx=None,
-            control_mode: str = "joint",
-            target_quat=None,
-            ee_link_name: str = "crane_x7_gripper_base_link",
-    ):
-        if envs_idx is None:
-            n_envs = getattr(self.scene, "n_envs", self.num_envs)
-            envs_idx = list(range(n_envs))
-        else:
-            envs_idx = np.r_[envs_idx].tolist()
+    def action(self, target, envs_idx=None, control_mode = "joint", target_quat=None, ee_link_name = "crane_x7_gripper_base_link"):
 
         if control_mode in ("delta_xy", "delta_xyz"):
             delta = np.asarray(target, dtype=np.float64)
@@ -291,26 +276,6 @@ class CraneX7(Robot):
             np.save(save_path, reachable)
         return reachable if return_points else None
 
-    def workspace(self, step=0.01):
-        surf_pts = gs.surfaces.Default(color=(0.0, 0.3, 1.0), opacity=0.6)
-        surf_edge = gs.surfaces.Default(color=(0.0, 1.0, 0.0), opacity=0.5)
-
-        ws_min = self.workspace_min
-        ws_max = self.workspace_max
-
-        ws_min_box = ws_min + self.workspace_margin
-        ws_max_box = ws_max - self.workspace_margin
-        self.scene.add_entity(
-            gs.morphs.Box(
-                lower=tuple(ws_min_box),
-                upper=tuple(ws_max_box),
-                visualization=True,
-                collision=False,
-                fixed=True,
-            ),
-            surface=surf_edge,
-        )
-
     def init_pose(self, envs_idx=None):
         if envs_idx is None:
             n_envs = getattr(self.scene, "n_envs", self.num_envs)
@@ -331,13 +296,11 @@ class CraneX7(Robot):
 if __name__ == "__main__":
     os.environ.setdefault("TMPDIR", "/tmp")
     num_envs = 1
-    mode = "delta_xy"
+    mode = "workspace_vis"
     target_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
     show_viewer = True
     draw_workspace_bounds = True
-    record_camera = True
-    video_path = os.path.join(repo_root, "videos", "crane_preview.mp4")
-    fps = 30
+    fps = 60
 
     gs.init(
         seed=None,
@@ -390,28 +353,15 @@ if __name__ == "__main__":
     crane_x7.create()
     table = Table(scene)
     table.create()
+    workspace = Workspace(scene)
+    workspace.create()
 
-
-
-
-    if record_camera:
-        os.makedirs(os.path.dirname(video_path), exist_ok=True)
-        cam = crane_x7.add_camera(
-            res=(1280, 960),
-            pos=(3.5, 0.0, 2.5),
-            lookat=(0.0, 0.0, 0.5),
-            fov=30,
-            gui=True,
-        )
 
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
     crane_x7.set_gain()
     crane_x7.init_pose()
 
-    if record_camera and crane_x7.camera is not None:
-        crane_x7.camera.start_recording()
 
-    # pause briefly in the initial pose before starting motions
     settle_steps = 120
     for _ in range(settle_steps):
         scene.step()
@@ -433,7 +383,3 @@ if __name__ == "__main__":
     elif mode == "workspace_vis":
         while scene.viewer.is_alive():
             scene.step()
-
-    if record_camera and crane_x7.camera is not None:
-        crane_x7.camera.stop_recording(save_to_filename=video_path, fps=fps)
-        print(f"Saved camera video to {video_path}")

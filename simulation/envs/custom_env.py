@@ -200,7 +200,7 @@ class Environment(Env):
     def _get_end_effector_position(self):
         self._ensure_pose_import()
         try:
-            ee_link = self.crane.crane_x7.get_link("crane_x7_gripper_base_link")
+            ee_link = self.crane.crane_x7.get_link("gripper")
             pos = np.asarray(ee_link.pose.p, dtype=np.float32)
             if pos.ndim == 1:
                 pos = pos.reshape(1, -1)
