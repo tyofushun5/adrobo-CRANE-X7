@@ -35,17 +35,23 @@ def _rotate_vec(q, v):
     return _quat_mul(_quat_mul(q, vq), _quat_conj(q))[1:]
 
 
-class CraneX7(Robot):
+class CraneX7(object):
     def __init__(self, scene = None, surface=None, num_envs = 1, root_fixed = True):
         super().__init__()
-        self.crane_x7 = None
+        self.scene = scene
+        self.surface = surface
         self.num_envs = num_envs
+        self.root_fixed = root_fixed
+
+        self.crane_x7 = None
+
         self.max_delta = 0.01
         self.workspace_min = np.array([0.100, -0.160, 0.070], dtype=np.float64)
         self.workspace_max = np.array([0.340, 0.160, 0.300], dtype=np.float64)
         self.workspace_margin = 0.0
-        self.table_z = 0.30
-        self.default_ee_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+        self.table_z = 0.40
+
+        self.default_ee_quat = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
         self._ee_cache = None
         self.max_joint_delta = np.array([1.2] * 7, dtype=np.float64)
 
@@ -64,6 +70,10 @@ class CraneX7(Robot):
             "crane_x7_gripper_finger_b_joint",
         ]
 
+        self.ee_link_name = [
+            "crane_x7_gripper_base_link",
+        ]
+
         self.all_joint_names = [
             "crane_x7_shoulder_fixed_part_pan_joint",
             "crane_x7_shoulder_revolute_part_tilt_joint",
@@ -79,10 +89,8 @@ class CraneX7(Robot):
         self.arm_dofs_idx = None
         self.gripper_joint_dofs_idx = None
         self.all_joint_dofs_idx = None
-        self.scene = scene
-        self.surface = surface
         self.urdf_path = os.path.join(repo_root, "crane_x7_description", "urdf", "crane_x7.urdf")
-        self.root_fixed = root_fixed
+
         self.surfaces = gs.surfaces.Default(
             color=(0.0, 0.0, 0.0),
             opacity=1.0,
@@ -118,12 +126,13 @@ class CraneX7(Robot):
             vis_mode="visual",
         )
 
-        return self.crane_x7
-
-    def set_gain(self):
         self.arm_dofs_idx = [self.crane_x7.get_joint(name).dof_idx_local for name in self.arm_joint_names]
         self.gripper_joint_dofs_idx = [self.crane_x7.get_joint(name).dof_idx_local for name in self.gripper_joint_names]
         self.all_joint_dofs_idx = self.arm_dofs_idx + self.gripper_joint_dofs_idx
+
+        return self.crane_x7
+
+    def set_gain(self):
 
         self.crane_x7.set_dofs_kp(
             kp=np.array([800, 800, 600, 600, 400, 400, 400, 50, 50]),
@@ -141,7 +150,16 @@ class CraneX7(Robot):
             dofs_idx_local=self.all_joint_dofs_idx,
         )
 
-    def action(self, target, envs_idx=None, control_mode = "joint", target_quat=None, ee_link_name = "crane_x7_gripper_base_link"):
+    def action(
+            self,
+            target,
+            envs_idx=None,
+            control_mode = "delta_xy",
+            target_quat=None,
+    ):
+        if envs_idx is None:
+            envs_idx = np.arange(self.num_envs)
+        envs_idx = np.r_[envs_idx]
 
         if control_mode in ("delta_xy", "delta_xyz"):
             delta = np.asarray(target, dtype=np.float64)
@@ -153,7 +171,7 @@ class CraneX7(Robot):
                 raise ValueError(f"delta_xyz expects shape (3,), got {delta.shape}")
 
             base_p = np.zeros(3, dtype=np.float64)
-            base_q = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
+            base_q = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
 
             if self._ee_cache is None:
                 mid_base = 0.5 * (self.workspace_min + self.workspace_max)
@@ -186,7 +204,7 @@ class CraneX7(Robot):
                 envs_idx=envs_idx,
                 control_mode="ik",
                 target_quat=np.tile(base_q, (len(envs_idx), 1)) if target_quat is None else target_quat,
-                ee_link_name=ee_link_name,
+                ee_link_name=self.ee_link_name,
             )
 
         target_pos = np.asarray(target, dtype=np.float64)
@@ -209,13 +227,12 @@ class CraneX7(Robot):
 
         target_pos = target_pos[: len(envs_idx)]
         target_quat = target_quat[: len(envs_idx)]
-        # Clamp IK target to workspace (apply margin to stay inside box)
         ws_min_margin = self.workspace_min + self.workspace_margin
         ws_max_margin = self.workspace_max - self.workspace_margin
         target_pos = np.clip(target_pos, ws_min_margin, ws_max_margin)
         rot_mask = [True, True, True]
         ik_qpos = self.crane_x7.inverse_kinematics_multilink(
-            links=[self.crane_x7.get_link(ee_link_name)],
+            links=[self.crane_x7.get_link(self.ee_link_name)],
             poss=[target_pos],
             quats=[target_quat],
             rot_mask=rot_mask,
@@ -276,19 +293,19 @@ class CraneX7(Robot):
             np.save(save_path, reachable)
         return reachable if return_points else None
 
-    def init_pose(self, envs_idx=None):
+    def reset(self, envs_idx=None):
         if envs_idx is None:
-            n_envs = getattr(self.scene, "n_envs", self.num_envs)
-            envs_idx = np.arange(n_envs)
+            envs_idx = np.arange(self.num_envs)
         envs_idx = np.r_[envs_idx]
-
         rest_qpos = np.tile(self.reset_qpos, (len(envs_idx), 1))
+
         self.crane_x7.set_dofs_position(
             rest_qpos,
             self.all_joint_dofs_idx,
             zero_velocity=True,
             envs_idx=envs_idx.tolist(),
         )
+
         midpoint = 0.5 * (self.workspace_min + self.workspace_max)
         midpoint[2] = self.table_z
         self._ee_cache = np.tile(midpoint, (self.num_envs, 1))
@@ -296,9 +313,7 @@ class CraneX7(Robot):
 if __name__ == "__main__":
     os.environ.setdefault("TMPDIR", "/tmp")
     num_envs = 1
-    mode = "workspace_vis"
-    target_quat = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float64)
-    show_viewer = True
+    mode = "delta_xy"
     draw_workspace_bounds = True
     fps = 60
 
@@ -324,7 +339,7 @@ if __name__ == "__main__":
             use_contact_island=False,
             use_hibernation=False,
         ),
-        show_viewer=show_viewer,
+        show_viewer=True,
         viewer_options=gs.options.ViewerOptions(
             camera_pos=(3.5, 0.0, 2.5),
             camera_lookat=(0.0, 0.0, 0.5),
@@ -356,10 +371,10 @@ if __name__ == "__main__":
     workspace = Workspace(scene)
     workspace.create()
 
-
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
+
     crane_x7.set_gain()
-    crane_x7.init_pose()
+    crane_x7.reset()
 
 
     settle_steps = 120
