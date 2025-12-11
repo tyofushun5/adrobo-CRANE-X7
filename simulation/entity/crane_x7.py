@@ -134,7 +134,11 @@ class CraneX7(object):
             dofs_idx_local=dof_idx,
             envs_idx=envs_idx,
         )
-        return np.asarray(qpos)
+        if hasattr(qpos, "detach"):
+            qpos = qpos.detach().cpu().numpy()
+        else:
+            qpos = np.asarray(qpos)
+        return qpos
 
     def action(self, action, envs_idx=None):
         if envs_idx is None:

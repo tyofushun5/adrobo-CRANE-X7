@@ -13,6 +13,17 @@ class Camera(Entity):
         super().__init__()
         self.scene = scene
         self.surface = surface
+        self.cam = None
 
     def create(self):
-        pass
+        self.cam = self.scene.add_camera(
+            res=(512, 512),
+            pos=(2.0, 1.0, 0.10),
+            lookat=(0.0, 0.0, 0.0),
+            fov=30,
+            GUI=True
+        )
+
+    def get_image(self):
+        rgb, depth, segmentation, normal = self.cam.render(depth=True, segmentation=True, normal=True)
+        return rgb

@@ -20,17 +20,20 @@ class Unit(object):
         self.crane_x7 = CraneX7(scene=self.scene, num_envs=self.num_envs, root_fixed=True)
         self.table = Table(scene)
         self.workspace = Workspace(scene)
+        self.camera = Camera(scene)
 
     def create(self):
         self.crane_x7.create()
         self.table.create()
         self.workspace.create()
+        self.camera.create()
 
     def step(self, *args, **kwargs):
         self.crane_x7.action(*args, **kwargs)
 
     def get_obs(self):
         self.crane_x7.get_joint_positions()
+        self.camera.get_image()
 
     def reset(self):
         self.crane_x7.set_gain()
@@ -69,7 +72,7 @@ if __name__ == "__main__":
         ),
         show_viewer=True,
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.5, 0.0, 2.5),
+            camera_pos=(2.0, 1.5, 1.1),
             camera_lookat=(0.0, 0.0, 0.5),
             camera_fov=35,
         ),
@@ -101,19 +104,14 @@ if __name__ == "__main__":
 
     unit.reset()
 
-    if mode in ("delta_xy", "delta_xyz"):
+    if mode == "workspace_vis":
+        while scene.viewer.is_alive():
+            scene.step()
+    else:
         num_steps = 10000
         rng = np.random.default_rng(0)
         for _ in range(num_steps):
-            if mode == "delta_xy":
-                action = rng.uniform(-1.0, 1.0, size=(2,))
-            else:
-                action = rng.uniform(-1.0, 1.0, size=(3,))
-            unit.step(
-                target=action,
-                target_quat=None,
-            )
-            scene.step()
-    elif mode == "workspace_vis":
-        while scene.viewer.is_alive():
+            action = rng.integers(0, 8, size=())
+            unit.step(action=action)
+            unit.get_obs()
             scene.step()
