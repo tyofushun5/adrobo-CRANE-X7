@@ -3,9 +3,9 @@ import os
 
 import genesis as gs
 
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
 repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
-
 
 class Table(object):
     def __init__(self, scene = None, surface=None, offset=(0.5, 0.0, -0.9196429), scale= 1.75):
@@ -15,8 +15,6 @@ class Table(object):
         self.scale = scale
 
         self.table = None
-        self.__table_height = 0.9196429
-        self.quat = math.cos(-math.pi / 2), 0.0, 0.0, math.sin(-math.pi / 2)
         self.table_path = os.path.join(repo_root,
                                         "ManiSkill",
                                         "mani_skill",
@@ -25,6 +23,9 @@ class Table(object):
                                         "table",
                                         "assets",
                                         "table.glb",)
+
+        self.__table_height = 0.9196429
+        self.quat = math.cos(-math.pi / 2), 0.0, 0.0, math.sin(-math.pi / 2)
 
     def create(self):
         morph = gs.morphs.Mesh(
@@ -51,5 +52,5 @@ class Table(object):
 
     @property
     def table_height(self):
-        return self.table_height
+        return self.__table_height
 
