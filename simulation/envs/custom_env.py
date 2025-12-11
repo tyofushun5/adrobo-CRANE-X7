@@ -1,13 +1,14 @@
 import numpy as np
-from gymnasium import spaces, Env
+from gymnasium.vector import VectorEnv
+from gymnasium import spaces
 import genesis as gs
 import torch
 
 from simulation.entity.crane_x7 import CraneX7
-from simulation.entity.table import TABLE_HEIGHT, add_table
+from simulation.entity.unit import Unit
 
 
-class Environment(Env):
+class Environment(VectorEnv):
     def __init__(
         self,
         num_envs: int = 1,

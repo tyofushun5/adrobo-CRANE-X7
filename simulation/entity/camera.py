@@ -17,13 +17,13 @@ class Camera(Entity):
 
     def create(self):
         self.cam = self.scene.add_camera(
-            res=(512, 512),
-            pos=(2.0, 1.0, 0.10),
-            lookat=(0.0, 0.0, 0.0),
+            res=(128, 128),
+            pos=(1.0, 1.0, 0.10),
+            lookat=(0.150, 0.0, 0.10),
             fov=30,
             GUI=True
         )
 
     def get_image(self):
-        rgb, depth, segmentation, normal = self.cam.render(depth=True, segmentation=True, normal=True)
+        rgb, depth, segmentation, normal = self.cam.render(depth=False, segmentation=False, normal=False)
         return rgb
