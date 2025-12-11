@@ -56,9 +56,8 @@ class CraneX7(object):
         self.ee_link_name = "crane_x7_gripper_base_link"
         self.ee_link = None
 
-        self.max_delta = 0.01
-
-        self.table_z = 0.10
+        self.num_delta = 0.01
+        self.table_z = 0.05
 
         self.default_ee_quat = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
         self.__ee_cache = None
@@ -142,13 +141,13 @@ class CraneX7(object):
             envs_idx = np.arange(self.num_envs)
         envs_idx = np.r_[envs_idx]
 
-        act = np.asarray(action, dtype=np.int64)
-        if act.ndim == 0:
-            act = act.reshape(1)
+        action = np.asarray(action, dtype=np.int64)
+        if action.ndim == 0:
+            action = action.reshape(1)
 
-        delta = np.zeros((len(act), 3), dtype=np.float64)
+        delta = np.zeros((len(action), 3), dtype=np.float64)
 
-        for i, a in enumerate(act):
+        for i, a in enumerate(action):
             if a == 0:
                 delta[i, 0] = +1
             elif a == 1:
@@ -158,9 +157,11 @@ class CraneX7(object):
             elif a == 3:
                 delta[i, 1] = -1
             elif a == 4:
-                delta[i, 2] = +1
+                if self.is_open_gripper is False:
+                    delta[i, 2] = +1
             elif a == 5:
-                delta[i, 2] = -1
+                if self.is_open_gripper is False:
+                    delta[i, 2] = -1
             elif a == 6:
                 self.is_open_gripper = False
                 target = np.tile(np.array([[-0.0873, -0.0873]], dtype=np.float64), (len(envs_idx), 1))
@@ -173,10 +174,10 @@ class CraneX7(object):
                 raise ValueError("invalid discrete action")
 
 
-        delta = np.clip(delta, -1.0, 1.0) * self.max_delta
+        delta = np.clip(delta, -1.0, 1.0) * self.num_delta
 
-        base_p = np.zeros(3, dtype=np.float64)
-        base_q = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
+        base_pos = np.zeros(3, dtype=np.float64)
+        base_quat = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
 
         if self.__ee_cache is None:
             mid_base = 0.5 * (self.workspace.workspace_min + self.workspace.workspace_max)
@@ -187,17 +188,17 @@ class CraneX7(object):
         ws_min_margin = self.workspace.workspace_min + self.workspace.workspace_margin
         ws_max_margin = self.workspace.workspace_max - self.workspace.workspace_margin
         for idx, d in enumerate(delta):
-            env_idx = envs_idx[idx] if idx < len(envs_idx) else envs_idx[0]
-            curr_pos_base = self.__ee_cache[env_idx].copy()
-            tgt = curr_pos_base.copy()
+            env_idx = envs_idx[idx]
+            current_pos_base = self.__ee_cache[env_idx].copy()
+            tgt = current_pos_base.copy()
             tgt[:3] += d[:3]
             tgt = np.clip(tgt, ws_min_margin, ws_max_margin)
             self.__ee_cache[env_idx] = tgt
-            tgt_world = base_p + self.rotate_vec(base_q, tgt)
+            tgt_world = base_pos + self.rotate_vec(base_quat, tgt)
             targets.append(tgt_world)
 
         target_pos = np.stack(targets, axis=0)
-        return self.ik(target_pos, envs_idx, base_q)
+        return self.ik(target_pos, envs_idx, base_quat)
 
     def ik(self, target, envs_idx, target_quat=None):
         target_pos = np.asarray(target, dtype=np.float64)
@@ -240,7 +241,6 @@ class CraneX7(object):
         ik_qpos[:, twist_idx] = self.reset_qpos[2]
         fixed_idx = self.arm_dofs_idx[4]
         ik_qpos[:, fixed_idx] = self.reset_qpos[4]
-        # Preserve gripper state: IK only solves arm, so inject desired gripper angle
         grip_pos = 0.0 if self.is_open_gripper else 1.57
         ik_qpos[:, 7:] = grip_pos
         self.crane_x7.control_dofs_position(ik_qpos, self.all_joint_dofs_idx, envs_idx)

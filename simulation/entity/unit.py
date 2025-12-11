@@ -29,6 +29,9 @@ class Unit(object):
     def step(self, *args, **kwargs):
         self.crane_x7.action(*args, **kwargs)
 
+    def get_obs(self):
+        self.crane_x7.get_joint_positions()
+
     def reset(self):
         self.crane_x7.set_gain()
         self.crane_x7.reset()
@@ -88,10 +91,11 @@ if __name__ == "__main__":
         renderer=gs.renderers.Rasterizer(),
     )
 
-    plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -0.9196429)))
 
     unit = Unit(scene, num_envs=num_envs)
     unit.create()
+
+    plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -unit.table.table_height)))
 
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
 

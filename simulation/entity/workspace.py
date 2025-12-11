@@ -20,8 +20,8 @@ class Workspace(Entity):
         self.point = gs.surfaces.Default(color=(0.0, 0.3, 1.0), opacity=0.6)
         self.surface_edge = gs.surfaces.Default(color=(0.0, 1.0, 0.0), opacity=0.5)
 
-        self.__workspace_min = np.array([0.120, -0.160, 0.070], dtype=np.float64)
-        self.__workspace_max = np.array([0.360, 0.160, 0.300], dtype=np.float64)
+        self.__workspace_min = np.array([0.150, -0.200, 0.050], dtype=np.float64)
+        self.__workspace_max = np.array([0.400, 0.200, 0.300], dtype=np.float64)
 
         self.workspace_margin = 0.0
 
