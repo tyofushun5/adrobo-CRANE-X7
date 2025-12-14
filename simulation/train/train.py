@@ -1,25 +1,14 @@
-"""DreamerV2トレーニングエントリポイント（シンプル実行用）。
+from __future__ import annotations
 
-dreamer_train.py を不要にするため、学習ループをこのファイルに内包しています。
-"""
-import sys
+import argparse
 from pathlib import Path
+from typing import Dict
 
-import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.distributions.kl import kl_divergence
 from torch.nn.utils import clip_grad_norm_
-
-CURRENT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = CURRENT_DIR.parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from simulation.entity.crane_x7 import CraneX7
-# Ensure ManiSkill env registration occurs before gym.make.
-import simulation.envs.custom_env  # registers PickPlace-CRANE-X7
 
 from dreamer_v2 import (
     Agent,
@@ -36,213 +25,149 @@ from dreamer_v2 import (
 )
 from dreamer_v2.distributions import MSE
 from dreamer_v2.tools.set_seed import set_seed
+from simulation.envs.custom_env import Environment
 
 
-def to_numpy(array) -> np.ndarray:
-    if isinstance(array, torch.Tensor):
-        return array.detach().cpu().numpy()
-    return np.asarray(array)
+def to_hwc_image(frame) -> np.ndarray:
+    """Convert various camera outputs into HWC RGB."""
+    frame = np.asarray(frame)
+    if frame.ndim == 4:
+        frame = frame[0]
+    if frame.ndim == 3 and frame.shape[0] in (1, 3, 4):
+        frame = np.transpose(frame, (1, 2, 0))
+    if frame.ndim == 3 and frame.shape[2] == 1:
+        frame = frame[:, :, 0]
+    return frame
 
 
-def transform_reward(reward: float) -> float:
+def prepare_image(frame, target_size: int) -> np.ndarray:
+    """Ensure uint8 HWC image resized to target_size."""
+    image = to_hwc_image(frame)
+    image = np.ascontiguousarray(image)
+    if image.dtype != np.uint8:
+        image = np.clip(image, 0.0, 1.0)
+        image = (image * 255.0).astype(np.uint8)
+    if image.shape[0] != target_size or image.shape[1] != target_size:
+        tensor = torch.from_numpy(image).permute(2, 0, 1).unsqueeze(0).float()
+        tensor = F.interpolate(tensor, size=(target_size, target_size), mode="bilinear", align_corners=False)
+        image = tensor.squeeze(0).permute(1, 2, 0).byte().numpy()
+    return image
+
+
+def transform_reward(reward: float | np.ndarray) -> float:
     return float(np.tanh(reward))
 
 
-class DeltaPosGripperWrapper(gym.ActionWrapper):
-    """Reduce action space to (dx, dy, dz, gripper) in [-1, 1]."""
-
-    def __init__(self, env: gym.Env, max_delta_m: float = 0.02):
-        super().__init__(env)
-        self.max_delta_m = max_delta_m
-        self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(4,), dtype=np.float32)
-
-    def action(self, action: np.ndarray) -> np.ndarray:
-        a = np.asarray(action, dtype=np.float32).reshape(-1)
-        a = np.clip(a, -1.0, 1.0)
-        dx_dy_dz = a[:3] * self.max_delta_m
-        grip = a[3] if a.size > 3 else 0.0
-
-        raw = self.env.action_space.sample() * 0.0
-        if raw.shape[0] >= 3:
-            raw[:3] = dx_dy_dz
-        if raw.shape[0] >= 6:
-            raw[3:6] = 0.0
-        raw[-1] = grip if raw.size > 0 else 0.0
-        return raw
+def capture_observation(env: Environment, image_size: int) -> Dict[str, np.ndarray]:
+    rgb = env.unit.camera.get_image()
+    image = prepare_image(rgb, image_size)
+    joint = env.crane.get_joint_positions(envs_idx=0, include_gripper=True)
+    joint = np.asarray(joint[0], dtype=np.float32).reshape(-1)
+    return {"image": image, "joint_pos": joint}
 
 
-class HandCameraWrapper(gym.Wrapper):
-    def __init__(self, env: gym.Env, image_size: int = 64):
-        super().__init__(env)
-        self.image_size = image_size
-        sample_obs, _ = self.env.reset()
-        self.joint_dim = self._extract_joint(sample_obs).shape[0]
-        self.observation_space = gym.spaces.Dict(
-            {
-                "image": gym.spaces.Box(
-                    low=0, high=255, shape=(image_size, image_size, 3), dtype=np.uint8
-                ),
-                "joint_pos": gym.spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(self.joint_dim,), dtype=np.float32
-                ),
-            }
-        )
-
-    def _extract_rgb(self, obs) -> np.ndarray:
-        camera_dict = obs["sensor_data"]["base_camera"]
-        rgb = to_numpy(camera_dict["rgb"])
-        if rgb.ndim == 4:
-            rgb = rgb[0]
-        if rgb.dtype != np.uint8:
-            rgb = np.clip(rgb, 0, 1)
-            rgb = (rgb * 255).astype(np.uint8)
-        rgb_tensor = torch.from_numpy(rgb).permute(2, 0, 1).unsqueeze(0).float()
-        rgb_tensor = F.interpolate(
-            rgb_tensor, size=(self.image_size, self.image_size), mode="bilinear", align_corners=False
-        )
-        return rgb_tensor.squeeze(0).permute(1, 2, 0).byte().numpy()
-
-    def _extract_joint(self, obs) -> np.ndarray:
-        joint = obs.get("agent", {}).get("joint_pos", None)
-        if joint is None:
-            joint = self.env.agent.robot.get_qpos()
-        joint = to_numpy(joint).astype(np.float32).reshape(-1)
-        joint = np.nan_to_num(joint, nan=0.0, posinf=0.0, neginf=0.0)
-        return joint
-
-    def reset(self, **kwargs):
-        obs, info = self.env.reset(**kwargs)
-        return {
-            "image": self._extract_rgb(obs),
-            "joint_pos": self._extract_joint(obs),
-        }, self._convert_info(info)
-
-    def step(self, action):
-        obs, reward, terminated, truncated, info = self.env.step(action)
-        reward_value = float(reward.item() if isinstance(reward, torch.Tensor) else reward)
-        converted_info = self._convert_info(info)
-        return (
-            {
-                "image": self._extract_rgb(obs),
-                "joint_pos": self._extract_joint(obs),
-            },
-            reward_value,
-            bool(terminated),
-            bool(truncated),
-            converted_info,
-        )
-
-    @staticmethod
-    def _convert_info(info):
-        converted = {}
-        for key, value in info.items():
-            if isinstance(value, torch.Tensor):
-                if value.numel() == 1:
-                    converted[key] = value.item()
-                else:
-                    converted[key] = value.cpu().numpy()
-            else:
-                converted[key] = value
-        return converted
-
-
-def make_env(seed: int, image_size: int, sim_backend: str, render_backend: str) -> gym.Env:
-    def normalize(value: str | None) -> str:
-        return (value or "auto").lower()
-
-    requested_sim = normalize(sim_backend)
-    requested_render = normalize(render_backend)
-
-    def resolve_render(sim_choice: str) -> str:
-        if requested_render == "auto":
-            return "gpu" if sim_choice not in {"cpu", "physx_cpu"} else "cpu"
-        return requested_render
-
-    candidate_pairs = []
-    seen_pairs = set()
-
-    def add_candidate(sim_choice: str, render_choice: str) -> None:
-        sim_key = normalize(sim_choice)
-        render_key = normalize(render_choice)
-        if render_key == "auto":
-            render_key = resolve_render(sim_key)
-        pair = (sim_key, render_key)
-        if pair not in seen_pairs:
-            seen_pairs.add(pair)
-            candidate_pairs.append(pair)
-
-    if requested_sim == "auto":
-        for sim_option in ("gpu", "cuda", "cpu"):
-            add_candidate(sim_option, resolve_render(sim_option))
-    else:
-        add_candidate(requested_sim, resolve_render(requested_sim))
-        if requested_sim not in {"cpu", "physx_cpu"}:
-            add_candidate("cpu", "cpu")
-
-    errors = []
-    for sim_option, render_option in candidate_pairs:
-        try:
-            base_env = gym.make(
-                "PickPlace-CRANE-X7",
-                control_mode="pd_ee_delta_pos",
-                render_mode="rgb_array",
-                sim_backend=sim_option,
-                render_backend=render_option,
-                robot_uids=CraneX7.uid,
-                obs_mode="rgb",
-            )
-            wrapped_env = DeltaPosGripperWrapper(base_env, max_delta_m=0.02)
-            wrapped_env = HandCameraWrapper(wrapped_env, image_size=image_size)
-            wrapped_env.reset(seed=seed)
-            setattr(wrapped_env, "resolved_sim_backend", sim_option)
-            setattr(wrapped_env, "resolved_render_backend", render_option)
-
-            if requested_sim == "auto":
-                print(f"Using ManiSkill backend sim={sim_option}, render={render_option} (auto).")
-            else:
-                requested_pair = (requested_sim, resolve_render(requested_sim))
-                if (sim_option, render_option) != requested_pair:
-                    print(
-                        "Requested ManiSkill backend "
-                        f"sim_backend={sim_backend} render_backend={render_backend} unavailable; "
-                        f"falling back to sim_backend={sim_option} render_backend={render_option}."
-                    )
-                else:
-                    print(f"Using ManiSkill backend sim={sim_option}, render={render_option}.")
-
-            return wrapped_env
-        except Exception as exc:
-            errors.append((sim_option, render_option, exc))
-
-    attempted = "\n".join(
-        f"  sim_backend={sim} render_backend={render}: {repr(err)}" for sim, render, err in errors
+def make_env(cfg) -> Environment:
+    return Environment(
+        num_envs=1,
+        max_steps=cfg.env_max_steps,
+        control_mode=cfg.control_mode,
+        device=cfg.sim_device,
+        show_viewer=cfg.show_viewer,
+        record=cfg.record,
+        video_path=cfg.video_path,
+        fps=cfg.fps,
+        cam_res=cfg.cam_res,
+        cam_pos=cfg.cam_pos,
+        cam_lookat=cfg.cam_lookat,
+        cam_fov=cfg.cam_fov,
+        success_threshold=cfg.success_threshold,
+        substeps=cfg.substeps,
     )
-    error_message = (
-        "Failed to initialize ManiSkill PickPlace envs.\n"
-        "Attempted backend combinations:\n"
-        f"{attempted}"
-    )
-    last_exception = errors[-1][2] if errors else None
-    raise RuntimeError(error_message) from last_exception
 
 
-def evaluation(eval_env: gym.Env, policy: Agent, cfg: Config):
-    successes = []
+def evaluation(eval_env: Environment, policy: Agent, cfg) -> float:
+    returns = []
     with torch.no_grad():
-        for _ in range(cfg.eval_episodes):
-            obs, _ = eval_env.reset()
+        for ep in range(cfg.eval_episodes):
+            eval_env.reset(seed=cfg.seed + 1234 + ep)
             policy.reset()
+            obs = capture_observation(eval_env, cfg.image_size)
             done = False
             truncated = False
-            info = {}
+            episode_return = 0.0
             while not done and not truncated:
                 action, _ = policy(obs)
-                obs, reward, done, truncated, info = eval_env.step(action)
-            success = float(info.get("success", 0.0))
-            successes.append(success)
-    mean_success = np.mean(successes) if successes else 0.0
-    print(f"Eval success rate: {mean_success:.3f}")
-    return mean_success
+                _, reward, terminated, truncated_arr, _ = eval_env.step(action)
+                done = bool(terminated[0])
+                truncated = bool(truncated_arr[0])
+                episode_return += float(reward[0])
+                obs = capture_observation(eval_env, cfg.image_size)
+            returns.append(episode_return)
+    mean_return = float(np.mean(returns)) if returns else 0.0
+    print(f"Eval mean return: {mean_return:.3f}")
+    return mean_return
+
+
+def build_config() -> Config:
+    parser = argparse.ArgumentParser(description="Train DreamerV2 on the custom Genesis environment.")
+    parser.add_argument("--iter", type=int, default=None, help="Total training iterations.")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed.")
+    parser.add_argument("--device", type=str, default=None, help="cpu / cuda / auto.")
+    parser.add_argument("--image_size", type=int, default=None, help="Square image size for Dreamer inputs.")
+    parser.add_argument("--seed_iter", type=int, default=None, help="Seed steps collected with random policy.")
+    parser.add_argument("--pretrain_iters", type=int, default=None, help="World model pretrain iterations.")
+    parser.add_argument("--save_path", type=str, default=None, help="Checkpoint path.")
+    parser.add_argument("--show_viewer", action="store_true", help="Show Genesis viewer during training.")
+    parser.add_argument("--record", action="store_true", help="Record training camera stream.")
+    parser.add_argument("--control_mode", type=str, default=None, choices=["delta_xy", "delta_xyz"], help="EE delta mode.")
+    parser.add_argument("--env_max_steps", type=int, default=None, help="Episode length before truncation.")
+    parser.add_argument("--substeps", type=int, default=None, help="Physics substeps per action.")
+    parser.add_argument("--sim_device", type=str, default=None, choices=["cpu", "gpu"], help="Genesis simulation device.")
+    args = parser.parse_args()
+
+    cfg = Config()
+    # Environment-specific additions
+    cfg.env_max_steps = 300
+    cfg.control_mode = "delta_xy"
+    cfg.sim_device = "cpu"
+    cfg.show_viewer = False
+    cfg.record = False
+    cfg.video_path = "videos/preview.mp4"
+    cfg.fps = 60
+    cfg.cam_res = (128, 128)
+    cfg.cam_pos = (1.0, 1.0, 0.10)
+    cfg.cam_lookat = (0.150, 0.0, 0.10)
+    cfg.cam_fov = 30.0
+    cfg.success_threshold = 0.02
+    cfg.substeps = 10
+
+    if args.iter is not None:
+        cfg.iter = args.iter
+    if args.seed is not None:
+        cfg.seed = args.seed
+    if args.device is not None:
+        cfg.device = args.device
+    if args.image_size is not None:
+        cfg.image_size = args.image_size
+    if args.seed_iter is not None:
+        cfg.seed_iter = args.seed_iter
+    if args.pretrain_iters is not None:
+        cfg.pretrain_iters = args.pretrain_iters
+    if args.save_path is not None:
+        cfg.save_path = args.save_path
+    if args.control_mode is not None:
+        cfg.control_mode = args.control_mode
+    if args.env_max_steps is not None:
+        cfg.env_max_steps = args.env_max_steps
+    if args.substeps is not None:
+        cfg.substeps = args.substeps
+    if args.sim_device is not None:
+        cfg.sim_device = args.sim_device
+
+    cfg.show_viewer = args.show_viewer
+    cfg.record = args.record
+
+    return cfg
 
 
 def train(cfg: Config):
@@ -254,12 +179,13 @@ def train(cfg: Config):
 
     set_seed(cfg.seed)
 
-    env = make_env(cfg.seed, cfg.image_size, cfg.sim_backend, cfg.render_backend)
-    eval_env = make_env(cfg.seed + 1, cfg.image_size, cfg.sim_backend, cfg.render_backend)
+    env = make_env(cfg)
+    eval_env = make_env(cfg)
 
+    obs = capture_observation(env, cfg.image_size)
+    image_shape = obs["image"].shape
+    joint_dim = obs["joint_pos"].shape[0]
     action_dim = env.action_space.shape[0]
-    image_shape = env.observation_space["image"].shape
-    joint_dim = env.observation_space["joint_pos"].shape[0]
 
     replay_buffer = ReplayBuffer(cfg.buffer_size, image_shape, joint_dim, action_dim)
 
@@ -287,24 +213,20 @@ def train(cfg: Config):
     actor_optimizer = torch.optim.Adam(actor.parameters(), lr=cfg.actor_lr, eps=cfg.epsilon, weight_decay=cfg.weight_decay)
     critic_optimizer = torch.optim.Adam(critic.parameters(), lr=cfg.critic_lr, eps=cfg.epsilon, weight_decay=cfg.weight_decay)
 
-    obs, _ = env.reset(seed=cfg.seed)
-    done = False
-    truncated = False
+    env.reset(seed=cfg.seed)
+    obs = capture_observation(env, cfg.image_size)
     print("Collecting seed experience...")
     for _ in range(cfg.seed_iter):
         action = env.action_space.sample()
-        next_obs, reward, done, truncated, info = env.step(action)
-        terminated = done or truncated
-        replay_buffer.push(preprocess_obs(obs), action, transform_reward(reward), terminated)
-        if terminated:
-            obs, _ = env.reset()
-            done = False
-            truncated = False
-        else:
-            obs = next_obs
+        _, reward, terminated, truncated_arr, _ = env.step(action)
+        done = bool(terminated[0])
+        truncated = bool(truncated_arr[0])
+        replay_buffer.push(preprocess_obs(obs), action, transform_reward(reward[0]), done or truncated)
+        obs = capture_observation(env, cfg.image_size)
 
     policy = Agent(encoder, decoder, rssm, actor)
     policy.to(device)
+    policy.reset()
     checkpoint_base = Path(cfg.save_path)
     checkpoint_base.parent.mkdir(parents=True, exist_ok=True)
 
@@ -314,6 +236,8 @@ def train(cfg: Config):
             target_path = checkpoint_base.with_name(f"{checkpoint_base.stem}_{suffix}{checkpoint_base.suffix}")
         torch.save(policy.to("cpu"), str(target_path))
         policy.to(device)
+
+    img_h, img_w = image_shape[0], image_shape[1]
 
     print("Starting world model pretraining...")
     for iteration in range(cfg.pretrain_iters):
@@ -327,7 +251,7 @@ def train(cfg: Config):
         done_flags = torch.as_tensor(done_flags, device=device).transpose(0, 1).float()
 
         emb_observations = encoder(
-            obs_images.reshape(-1, 3, cfg.image_size, cfg.image_size),
+            obs_images.reshape(-1, 3, img_h, img_w),
             obs_joints.reshape(-1, joint_dim),
         ).view(cfg.seq_length, cfg.batch_size, -1)
 
@@ -360,10 +284,6 @@ def train(cfg: Config):
         obs_loss = -torch.mean(obs_dist.log_prob(obs_images[1:].reshape(-1, C, H, W)))
         reward_loss = -torch.mean(reward_dist.log_prob(rewards[:-1].reshape(-1, 1)))
         wm_loss = obs_loss + cfg.reward_loss_scale * reward_loss + cfg.kl_scale * kl_loss
-        obs_loss_value = obs_loss.item()
-        reward_loss_value = reward_loss.item()
-        kl_loss_value = kl_loss.item()
-        wm_loss_value = wm_loss.item()
 
         wm_optimizer.zero_grad()
         wm_loss.backward()
@@ -373,43 +293,37 @@ def train(cfg: Config):
         if (iteration + 1) % cfg.log_freq == 0 or iteration == cfg.pretrain_iters - 1:
             print(
                 f"[Pretrain {iteration + 1}/{cfg.pretrain_iters}] "
-                f"wm={wm_loss_value:.4f} obs={obs_loss_value:.4f} "
-                f"reward={reward_loss_value:.4f} kl={kl_loss_value:.4f}"
+                f"wm={wm_loss.item():.4f} obs={obs_loss.item():.4f} "
+                f"reward={reward_loss.item():.4f} kl={kl_loss.item():.4f}"
             )
 
     print("Main training loop...")
-    obs, _ = env.reset(seed=cfg.seed + 123)
-    done = False
-    truncated = False
+    env.reset(seed=cfg.seed + 123)
+    obs = capture_observation(env, cfg.image_size)
     episode_returns = []
-    episode_successes = []
     current_return = 0.0
     last_wm_metrics = None
     last_actor_loss = None
     last_critic_loss = None
     last_entropy = None
-    best_success = -np.inf
+    best_eval = -np.inf
+
     for iteration in range(cfg.iter):
         with torch.no_grad():
             action, _ = policy(obs, eval=False)
-            next_obs, reward, done, truncated, info = env.step(action)
-            terminated = done or truncated
-            transformed_reward = transform_reward(reward)
-            replay_buffer.push(preprocess_obs(obs), action, transformed_reward, terminated)
+            _, reward, terminated, truncated_arr, _ = env.step(action)
+            done = bool(terminated[0])
+            truncated = bool(truncated_arr[0])
+            transformed_reward = transform_reward(reward[0])
+            replay_buffer.push(preprocess_obs(obs), action, transformed_reward, done or truncated)
             current_return += float(transformed_reward)
-            if terminated:
+            obs = capture_observation(env, cfg.image_size)
+            if done or truncated:
                 episode_returns.append(current_return)
                 if len(episode_returns) > 100:
                     episode_returns.pop(0)
-                episode_successes.append(float(info.get("success", 0.0)))
-                if len(episode_successes) > 100:
-                    episode_successes.pop(0)
                 current_return = 0.0
-                obs, _ = env.reset()
-                done = False
-                truncated = False
-            else:
-                obs = next_obs
+                policy.reset()
 
         if (iteration + 1) % cfg.update_freq == 0:
             observations, actions, rewards, done_flags = replay_buffer.sample(cfg.batch_size, cfg.seq_length)
@@ -421,9 +335,10 @@ def train(cfg: Config):
             done_flags = torch.as_tensor(done_flags, device=device).transpose(0, 1).float()
 
             emb_observations = encoder(
-                obs_images.reshape(-1, 3, cfg.image_size, cfg.image_size),
+                obs_images.reshape(-1, 3, img_h, img_w),
                 obs_joints.reshape(-1, joint_dim),
             ).view(cfg.seq_length, cfg.batch_size, -1)
+
             state = torch.zeros(cfg.batch_size, cfg.state_dim * cfg.num_classes, device=device)
             rnn_hidden = torch.zeros(cfg.batch_size, cfg.rnn_hidden_dim, device=device)
             states = torch.zeros(cfg.seq_length, cfg.batch_size, cfg.state_dim * cfg.num_classes, device=device)
@@ -452,10 +367,6 @@ def train(cfg: Config):
             obs_loss = -torch.mean(obs_dist.log_prob(obs_images[1:].reshape(-1, C, H, W)))
             reward_loss = -torch.mean(reward_dist.log_prob(rewards[:-1].reshape(-1, 1)))
             wm_loss = obs_loss + cfg.reward_loss_scale * reward_loss + cfg.kl_scale * kl_loss
-            obs_loss_value = obs_loss.item()
-            reward_loss_value = reward_loss.item()
-            kl_loss_value = kl_loss.item()
-            wm_loss_value = wm_loss.item()
 
             wm_optimizer.zero_grad()
             wm_loss.backward()
@@ -481,8 +392,8 @@ def train(cfg: Config):
             imagined_states[0] = flatten_states
             imagined_rnn_hiddens[0] = flatten_rnn_hiddens
             for i in range(1, cfg.imagination_horizon + 1):
-                actions, action_log_probs, action_entropys = actor(flatten_states, flatten_rnn_hiddens)
-                flatten_rnn_hiddens = rssm.recurrent(flatten_states, actions, flatten_rnn_hiddens)
+                actions_imagined, action_log_probs, action_entropys = actor(flatten_states, flatten_rnn_hiddens)
+                flatten_rnn_hiddens = rssm.recurrent(flatten_states, actions_imagined, flatten_rnn_hiddens)
                 flatten_states_prior = rssm.get_prior(flatten_rnn_hiddens)
                 flatten_states = flatten_states_prior.rsample().flatten(1)
 
@@ -516,7 +427,6 @@ def train(cfg: Config):
             weights[-1] = 0.0
             objective = lambda_target + cfg.actor_entropy_scale * imagined_action_entropys
             actor_loss = -(weights * objective).mean()
-            actor_loss_value = actor_loss.item()
 
             actor_optimizer.zero_grad()
             actor_loss.backward()
@@ -528,7 +438,6 @@ def train(cfg: Config):
             )
             value_dist = MSE(value_mean)
             critic_loss = -(weights.detach() * value_dist.log_prob(lambda_target.detach())).mean()
-            critic_loss_value = critic_loss.item()
 
             critic_optimizer.zero_grad()
             critic_loss.backward()
@@ -536,13 +445,13 @@ def train(cfg: Config):
             critic_optimizer.step()
 
             last_wm_metrics = {
-                "wm": wm_loss_value,
-                "obs": obs_loss_value,
-                "reward": reward_loss_value,
-                "kl": kl_loss_value,
+                "wm": wm_loss.item(),
+                "obs": obs_loss.item(),
+                "reward": reward_loss.item(),
+                "kl": kl_loss.item(),
             }
-            last_actor_loss = actor_loss_value
-            last_critic_loss = critic_loss_value
+            last_actor_loss = actor_loss.item()
+            last_critic_loss = critic_loss.item()
             last_entropy = imagined_action_entropys.mean().item()
 
             if (iteration + 1) % cfg.slow_critic_update == 0:
@@ -550,20 +459,19 @@ def train(cfg: Config):
 
         if (iteration + 1) % cfg.log_freq == 0 and last_wm_metrics is not None:
             recent_return = float(np.mean(episode_returns[-10:])) if episode_returns else 0.0
-            recent_success = float(np.mean(episode_successes[-10:])) if episode_successes else 0.0
             print(
                 f"[Iter {iteration + 1}/{cfg.iter}] "
                 f"wm={last_wm_metrics['wm']:.4f} obs={last_wm_metrics['obs']:.4f} "
                 f"reward={last_wm_metrics['reward']:.4f} kl={last_wm_metrics['kl']:.4f} "
                 f"actor={last_actor_loss:.4f} critic={last_critic_loss:.4f} "
                 f"entropy={last_entropy:.4f} return@10={recent_return:.2f} "
-                f"success@10={recent_success:.2f} buffer={len(replay_buffer)}/{cfg.buffer_size}"
+                f"buffer={len(replay_buffer)}/{cfg.buffer_size}"
             )
 
         if (iteration + 1) % cfg.eval_freq == 0:
-            success = evaluation(eval_env, policy, cfg)
-            if success > best_success:
-                best_success = success
+            eval_return = evaluation(eval_env, policy, cfg)
+            if eval_return > best_eval:
+                best_eval = eval_return
                 save_checkpoint()
 
         if cfg.checkpoint_freq and (iteration + 1) % cfg.checkpoint_freq == 0:
@@ -576,13 +484,12 @@ def train(cfg: Config):
 
 
 def main():
-    cfg = Config()
-
+    cfg = build_config()
     save_path = Path(cfg.save_path)
     if save_path.parent and not save_path.parent.exists():
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print("Launching DreamerV2 with config (Config defaults):")
+    print("Launching DreamerV2 with config:")
     for key, value in cfg.__dict__.items():
         print(f"  {key}: {value}")
 

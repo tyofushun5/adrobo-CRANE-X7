@@ -37,16 +37,21 @@ class GenesisConfig(object):
 
     def gs_init(self):
 
-        gs.init(
-            seed = self.seed,
-            precision = self.precision,
-            debug = False,
-            eps = 1e-12,
-            logging_level = self.logging_level,
-            backend = gs.cpu if self.device == 'cpu' else gs.gpu,
-            theme = 'dark',
-            logger_verbose_time = False
-        )
+        try:
+            gs.init(
+                seed = self.seed,
+                precision = self.precision,
+                debug = False,
+                eps = 1e-12,
+                logging_level = self.logging_level,
+                backend = gs.cpu if self.device == 'cpu' else gs.gpu,
+                theme = 'dark',
+                logger_verbose_time = False
+            )
+        except Exception as exc:
+            # Allow repeated initialization when an evaluator env is created after a training env.
+            if "already initialized" not in str(exc).lower():
+                raise
 
         self.scene = gs.Scene(
             sim_options=gs.options.SimOptions(
@@ -63,11 +68,11 @@ class GenesisConfig(object):
                 use_contact_island=False,
                 use_hibernation=False
             ),
-            show_viewer=True,
+            show_viewer=self.show_viewer,
             viewer_options=gs.options.ViewerOptions(
-                camera_pos=(3.5, 0.0, 2.5),
-                camera_lookat=(0.0, 0.0, 0.5),
-                camera_fov=35,
+                camera_pos=self.cam_pos,
+                camera_lookat=self.cam_lookat,
+                camera_fov=self.cam_fov,
             ),
             vis_options=gs.options.VisOptions(
                 show_world_frame=True,
@@ -82,7 +87,7 @@ class GenesisConfig(object):
                     {"type": "directional", "dir": (-0.6, -0.7, -1.0), "color": (1.0, 0.98, 0.95), "intensity": 3.0},
                     {"type": "directional", "dir": (0.4, 0.1, -1.0), "color": (0.9, 0.95, 1.0), "intensity": 1.5},
                 ],
-                rendered_envs_idx=self.num_envs,
+                rendered_envs_idx=list(range(self.num_envs)),
             ),
             renderer=gs.renderers.Rasterizer(),
         )

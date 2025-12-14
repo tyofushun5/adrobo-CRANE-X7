@@ -1,14 +1,16 @@
+from __future__ import annotations
+
 import numpy as np
-from gymnasium.vector import VectorEnv
 from gymnasium import spaces
+import gymnasium as gym
 import genesis as gs
 import torch
 
-from simulation.entity.crane_x7 import CraneX7
+from simulation.config.genesis_init import GenesisConfig
 from simulation.entity.unit import Unit
 
 
-class Environment(VectorEnv):
+class Environment(gym.Env):
     def __init__(
         self,
         num_envs: int = 1,
@@ -19,108 +21,28 @@ class Environment(VectorEnv):
         record: bool = False,
         video_path: str = "videos/preview.mp4",
         fps: int = 60,
-        cam_res=(1280, 960),
-        cam_pos=(1.3, 0.0, 0.9),
-        cam_lookat=(0.35, 0.0, 0.2),
-        cam_fov: float = 60.0,
+        cam_res=(128, 128),
+        cam_pos=(1.0, 1.0, 0.10),
+        cam_lookat=(0.150, 0.0, 0.10),
+        cam_fov: float = 30.0,
         success_threshold: float = 0.02,
         substeps: int = 10,
     ):
         if control_mode not in ("delta_xy", "delta_xyz"):
             raise ValueError(f"Unsupported control_mode '{control_mode}'")
 
-        self.control_mode = control_mode
         action_dim = 2 if control_mode == "delta_xy" else 3
 
-        gs.init(
-            seed=None,
-            precision="32",
-            debug=False,
-            eps=1e-12,
-            logging_level="warning",
-            backend=gs.cpu if device == "cpu" else gs.gpu,
-            theme="dark",
-            logger_verbose_time=False,
-        )
-
-        self.scene = gs.Scene(
-            sim_options=gs.options.SimOptions(
-                dt=0.01,
-                gravity=(0, 0, -9.81),
-            ),
-            rigid_options=gs.options.RigidOptions(
-                enable_joint_limit=True,
-                enable_collision=True,
-                constraint_solver=gs.constraint_solver.Newton,
-                iterations=150,
-                tolerance=1e-6,
-                contact_resolve_time=0.01,
-                use_contact_island=False,
-                use_hibernation=False
-            ),
-            show_viewer=show_viewer,
-            viewer_options=gs.options.ViewerOptions(
-                camera_pos=(3.5, 0.0, 2.5),
-                camera_lookat=(0.0, 0.0, 0.5),
-                camera_fov=35,
-            ),
-            vis_options=gs.options.VisOptions(
-                show_world_frame=True,
-                world_frame_size=1.0,
-                show_link_frame=False,
-                show_cameras=False,
-                plane_reflection=True,
-                shadow=True,
-                background_color=(0.02, 0.04, 0.08),
-                ambient_light=(0.12, 0.12, 0.12),
-                lights=[
-                    {"type": "directional", "dir": (-0.6, -0.7, -1.0), "color": (1.0, 0.98, 0.95), "intensity": 3.0},
-                    {"type": "directional", "dir": (0.4, 0.1, -1.0), "color": (0.9, 0.95, 1.0), "intensity": 1.5},
-                ],
-                rendered_envs_idx=list(range(num_envs)),
-            ),
-            renderer=gs.renderers.Rasterizer(),
-        )
-        self.plane = self.scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -TABLE_HEIGHT)))
-        self.table = add_table(self.scene)
-        self.crane = CraneX7(self.scene, num_envs=num_envs, root_fixed=True)
-        self.crane.create()
-
-        obs_low = np.concatenate(
-            [
-                self.crane.workspace_min + self.crane.workspace_margin,
-                self.crane.workspace_min + self.crane.workspace_margin,
-            ]
-        ).astype(np.float32)
-        obs_high = np.concatenate(
-            [
-                self.crane.workspace_max - self.crane.workspace_margin,
-                self.crane.workspace_max - self.crane.workspace_margin,
-            ]
-        ).astype(np.float32)
-
-        self.single_action_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(action_dim,), dtype=np.float32
-        )
-        self.single_observation_space = spaces.Box(
-            low=obs_low,
-            high=obs_high,
-            dtype=np.float32,
-        )
-
-        # gym.Env expects these attributes
-        self.action_space = self.single_action_space
-        self.observation_space = self.single_observation_space
-
-        super().__init__()
-        self.device = torch.device(device)
         self.num_envs = num_envs
+        self.device = torch.device(device)
         self.env_ids = torch.arange(self.num_envs, device=self.device)
+        self.control_mode = control_mode
         self.max_steps = max_steps
         self.substeps = substeps
         self.success_threshold = success_threshold
         self.step_count = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
         self.targets = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
+        self.ee_cache = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
 
         self._record = record
         self._video_path = video_path
@@ -131,6 +53,43 @@ class Environment(VectorEnv):
         self.cam_pos = cam_pos
         self.cam_lookat = cam_lookat
         self.cam_fov = cam_fov
+
+        self.genesis_cfg = GenesisConfig(
+            num_envs=self.num_envs,
+            device=device,
+            logging_level="warning",
+            show_viewer=show_viewer,
+            record=record,
+            video_path=video_path,
+            fps=fps,
+            cam_res=cam_res,
+            cam_pos=cam_pos,
+            cam_lookat=cam_lookat,
+            cam_fov=cam_fov,
+        )
+        self.genesis_cfg.gs_init()
+        self.scene = self.genesis_cfg.scene
+
+        self.unit = Unit(self.scene, num_envs=self.num_envs)
+        self.unit.create()
+        self.crane = self.unit.crane_x7
+        self.workspace = self.unit.workspace
+        self.table_z = float(self.crane.table_z)
+        self.max_delta = float(self.crane.num_delta)
+
+        self.scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -self.unit.table.table_height)))
+
+        workspace_min = self.workspace.workspace_min + self.workspace.workspace_margin
+        workspace_max = self.workspace.workspace_max - self.workspace.workspace_margin
+
+        obs_low = np.concatenate([workspace_min, workspace_min]).astype(np.float32)
+        obs_high = np.concatenate([workspace_max, workspace_max]).astype(np.float32)
+
+        self.single_action_space = spaces.Box(low=-1.0, high=1.0, shape=(action_dim,), dtype=np.float32)
+        self.single_observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
+
+        self.action_space = self.single_action_space
+        self.observation_space = self.single_observation_space
 
         if self._record:
             from pathlib import Path
@@ -146,7 +105,7 @@ class Environment(VectorEnv):
 
         self.scene.build(n_envs=self.num_envs, env_spacing=(2.0, 3.0))
         self.crane.set_gain()
-        self.crane.init_pose()
+        self.crane.reset(envs_idx=self.env_ids.cpu().numpy())
 
         self.dt_phys = self.scene.dt * self.substeps
 
@@ -156,7 +115,8 @@ class Environment(VectorEnv):
         super().reset(seed=seed)
         self.step_count.zero_()
         self.scene.reset()
-        self.crane.init_pose(envs_idx=self.env_ids.cpu().numpy())
+        self.crane.reset(envs_idx=self.env_ids.cpu().numpy())
+        self._init_cache()
         self.targets[:] = self._sample_targets(self.num_envs)
 
         if self._record and self._cam is not None:
@@ -169,19 +129,19 @@ class Environment(VectorEnv):
 
     def _sample_targets(self, batch: int):
         low = torch.as_tensor(
-            self.crane.workspace_min + self.crane.workspace_margin,
+            self.workspace.workspace_min + self.workspace.workspace_margin,
             dtype=torch.float32,
             device=self.device,
         )
         high = torch.as_tensor(
-            self.crane.workspace_max - self.crane.workspace_margin,
+            self.workspace.workspace_max - self.workspace.workspace_margin,
             dtype=torch.float32,
             device=self.device,
         )
 
         if self.control_mode == "delta_xy":
             xy = low[:2] + torch.rand((batch, 2), device=self.device) * (high[:2] - low[:2])
-            z = torch.full((batch, 1), fill_value=self.crane.table_z, device=self.device)
+            z = torch.full((batch, 1), fill_value=self.table_z, device=self.device)
             return torch.cat([xy, z], dim=1)
 
         rand = torch.rand((batch, 3), device=self.device)
@@ -198,10 +158,20 @@ class Environment(VectorEnv):
         except Exception:
             pass
 
+    def _init_cache(self, env_ids=None):
+        if env_ids is None:
+            env_ids = np.arange(self.num_envs)
+        env_ids = np.r_[env_ids]
+
+        midpoint = 0.5 * (self.workspace.workspace_min + self.workspace.workspace_max)
+        midpoint[2] = self.table_z
+        cache = np.tile(midpoint, (len(env_ids), 1))
+        self.ee_cache[env_ids] = torch.as_tensor(cache, dtype=torch.float32, device=self.device)
+
     def _get_end_effector_position(self):
         self._ensure_pose_import()
         try:
-            ee_link = self.crane.crane_x7.get_link("gripper")
+            ee_link = self.crane.crane_x7.get_link(self.crane.ee_link_name)
             pos = np.asarray(ee_link.pose.p, dtype=np.float32)
             if pos.ndim == 1:
                 pos = pos.reshape(1, -1)
@@ -218,23 +188,46 @@ class Environment(VectorEnv):
         env_ids = np.r_[env_ids]
         if env_ids.size == 0:
             return
-        self.crane.init_pose(envs_idx=env_ids.tolist())
+        self.crane.reset(envs_idx=env_ids.tolist())
+        self._init_cache(env_ids)
         self.targets[env_ids] = self._sample_targets(len(env_ids))
         self.step_count[env_ids] = 0
+
+    def _apply_action(self, action: torch.Tensor) -> None:
+        if action.ndim == 1:
+            action = action.unsqueeze(0)
+        action = action[: self.num_envs]
+
+        if self.control_mode == "delta_xy":
+            delta = torch.zeros((action.shape[0], 3), device=self.device, dtype=torch.float32)
+            delta[:, :2] = torch.clamp(action[:, :2], -1.0, 1.0)
+        else:
+            delta = torch.clamp(action[:, :3], -1.0, 1.0)
+
+        delta_np = delta.cpu().numpy() * self.max_delta
+
+        base_pos = np.zeros(3, dtype=np.float64)
+        base_quat = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
+        ws_min = self.workspace.workspace_min + self.workspace.workspace_margin
+        ws_max = self.workspace.workspace_max - self.workspace.workspace_margin
+
+        targets_world = []
+        for env_idx, d in enumerate(delta_np):
+            current = self.ee_cache[env_idx].cpu().numpy()
+            target = current + d
+            target = np.clip(target, ws_min, ws_max)
+            self.ee_cache[env_idx] = torch.as_tensor(target, device=self.device, dtype=torch.float32)
+            target_world = base_pos + self.crane.rotate_vec(base_quat, target)
+            targets_world.append(target_world)
+
+        targets_world = np.asarray(targets_world, dtype=np.float64)
+        self.crane.ik(targets_world, envs_idx=self.env_ids.cpu().numpy(), target_quat=self.crane.default_ee_quat)
 
     def step(self, action):
         infos = [{} for _ in range(self.num_envs)]
 
         action = torch.as_tensor(action, dtype=torch.float32, device=self.device)
-        if action.ndim == 1:
-            action = action.unsqueeze(0)
-        action = action[: self.num_envs]
-
-        self.crane.action(
-            target=action.cpu().numpy(),
-            envs_idx=self.env_ids.cpu().numpy(),
-            control_mode=self.control_mode,
-        )
+        self._apply_action(action)
 
         self.scene.step(self.substeps)
 

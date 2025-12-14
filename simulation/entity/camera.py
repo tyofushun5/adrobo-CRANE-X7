@@ -21,7 +21,7 @@ class Camera(Entity):
             pos=(1.0, 1.0, 0.10),
             lookat=(0.150, 0.0, 0.10),
             fov=30,
-            GUI=True
+            GUI=False
         )
 
     def get_image(self):

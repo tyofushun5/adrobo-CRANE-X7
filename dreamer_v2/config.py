@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     buffer_size: int = 100_000
-    batch_size: int = 50
+    batch_size: int = 16
     seq_length: int = 50
     imagination_horizon: int = 15
 
@@ -30,7 +30,7 @@ class Config:
     discount: float = 0.995
     lambda_: float = 0.95
 
-    iter: int = 80000
+    iter: int = 100
     seed_iter: int = 1000
     eval_freq: int = 10
     eval_episodes: int = 5
@@ -38,11 +38,24 @@ class Config:
     log_freq: int = 100
     image_size: int = 64
     seed: int = 1
-    sim_backend: str = "cpu"
-    render_backend: str = "gpu"
-    device: str = "auto"
+    device: str = "cuda"
     save_path: str = "dreamer_agent.pth"
     checkpoint_freq: int = 5000
+
+    # Genesis custom env defaults
+    env_max_steps: int = 300
+    control_mode: str = "delta_xy"
+    sim_device: str = "cpu"
+    show_viewer: bool = False
+    record: bool = False
+    video_path: str = "videos/preview.mp4"
+    fps: int = 60
+    cam_res: tuple[int, int] = (128, 128)
+    cam_pos: tuple[float, float, float] = (1.0, 1.0, 0.10)
+    cam_lookat: tuple[float, float, float] = (0.150, 0.0, 0.10)
+    cam_fov: float = 30.0
+    success_threshold: float = 0.02
+    substeps: int = 10
 
 
 cfg = Config()
