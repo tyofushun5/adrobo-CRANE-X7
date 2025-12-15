@@ -112,7 +112,7 @@ def build_config() -> Config:
     cfg.env_max_steps = 300
     cfg.control_mode = "delta_xy"
     cfg.sim_device = "cpu"
-    cfg.show_viewer = True
+    cfg.show_viewer = False
     cfg.record = False
     cfg.video_path = "videos/preview.mp4"
     cfg.fps = 60
