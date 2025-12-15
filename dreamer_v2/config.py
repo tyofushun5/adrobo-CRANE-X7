@@ -44,7 +44,7 @@ class Config:
 
     # Genesis custom env defaults
     env_max_steps: int = 300
-    control_mode: str = "delta_xy"
+    control_mode: str = "discrete_xyz"
     sim_device: str = "cpu"
     show_viewer: bool = False
     record: bool = False

@@ -110,7 +110,7 @@ def evaluation(eval_env: Environment, policy: Agent, cfg) -> float:
 def build_config() -> Config:
     cfg = Config()
     cfg.env_max_steps = 300
-    cfg.control_mode = "delta_xy"
+    cfg.control_mode = "discrete_xyz"
     cfg.sim_device = "cpu"
     cfg.show_viewer = False
     cfg.record = False
