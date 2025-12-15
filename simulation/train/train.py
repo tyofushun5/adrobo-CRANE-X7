@@ -55,9 +55,9 @@ def prepare_image(frame, target_size: int) -> np.ndarray:
 
 
 def capture_observation(env: Environment, image_size: int) -> Dict[str, np.ndarray]:
-    rgb = env.unit.camera.get_image()
+    rgb = env.unit.obs_camera.get_image()
     image = prepare_image(rgb, image_size)
-    joint = env.crane.get_joint_positions(envs_idx=0, include_gripper=True)
+    joint = env.crane_x7.get_joint_positions(envs_idx=0, include_gripper=True)
     joint = np.asarray(joint[0], dtype=np.float32).reshape(-1)
     return {"image": image, "joint_pos": joint}
 
@@ -72,11 +72,10 @@ def make_env(cfg) -> Environment:
         record=cfg.record,
         video_path=cfg.video_path,
         fps=cfg.fps,
-        cam_res=cfg.cam_res,
-        cam_pos=cfg.cam_pos,
-        cam_lookat=cfg.cam_lookat,
-        cam_fov=cfg.cam_fov,
-        success_threshold=cfg.success_threshold,
+        obs_cam_res=cfg.obs_cam_res,
+        obs_cam_pos=cfg.obs_cam_pos,
+        obs_cam_lookat=cfg.obs_cam_lookat,
+        obs_cam_fov=cfg.obs_cam_fov,
         substeps=cfg.substeps,
     )
 

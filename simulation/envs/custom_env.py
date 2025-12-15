@@ -13,65 +13,68 @@ from simulation.entity.unit import Unit
 class Environment(gym.Env):
     def __init__(
         self,
-        num_envs: int = 1,
-        max_steps: int = 300,
-        control_mode: str = "delta_xy",
-        device: str = "cpu",
-        show_viewer: bool = False,
-        record: bool = False,
-        video_path: str = "videos/preview.mp4",
-        fps: int = 60,
-        cam_res=(128, 128),
-        cam_pos=(1.0, 1.0, 0.10),
-        cam_lookat=(0.150, 0.0, 0.10),
-        cam_fov: float = 30.0,
-        record_cam_res=None,
-        record_cam_pos=None,
-        record_cam_lookat=None,
-        record_cam_fov: float | None = None,
-        success_threshold: float = 0.02,
-        substeps: int = 10,
+        num_envs=1,
+        max_steps=300,
+        control_mode="discrete_xyz",
+        device="cpu",
+        show_viewer=False,
+        record=False,
+        is_table=False,
+        is_workspace=False,
+        video_path="videos/preview.mp4",
+        fps=60,
+        obs_cam_res=(128, 128),
+        obs_cam_pos=(1.0, 1.0, 0.10),
+        obs_cam_lookat=(0.100, 0.0, 0.10),
+        obs_cam_fov=30.0,
+        record_cam_res=(1024, 1024),
+        record_cam_pos=(1.0, 1.0, 0.10),
+        record_cam_lookat=(0.100, 0.0, 0.10),
+        record_cam_fov=30.0,
+        substeps=10,
     ):
-
-        action_dim = 2 if control_mode == "delta_xy" else 3
 
         self.num_envs = num_envs
         self.device = torch.device(device)
+        self.show_viewer = show_viewer
         self.env_ids = torch.arange(self.num_envs, device=self.device)
         self.control_mode = control_mode
+        self.is_table = is_table
+        self.is_workspace = is_workspace
         self.max_steps = max_steps
         self.substeps = substeps
-        self.success_threshold = success_threshold
         self.step_count = torch.zeros(self.num_envs, dtype=torch.int32, device=self.device)
         self.targets = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
         self.ee_cache = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
 
-        self._record = record
-        self._video_path = video_path
-        self._fps = fps
-        self._cam = None
-        self._recording = False
-        self.cam_res = cam_res
-        self.cam_pos = cam_pos
-        self.cam_lookat = cam_lookat
-        self.cam_fov = cam_fov
-        self.record_cam_res = record_cam_res or (1024, 1024)
-        self.record_cam_pos = record_cam_pos or cam_pos
-        self.record_cam_lookat = record_cam_lookat or cam_lookat
-        self.record_cam_fov = record_cam_fov or cam_fov
+        self.record = record
+        self.video_path = video_path
+        self.fps = fps
+        self.cam = None
+        self.recording = False
+
+        self.obs_cam_res = obs_cam_res
+        self.obs_cam_pos = obs_cam_pos
+        self.obs_cam_lookat = obs_cam_lookat
+        self.obs_cam_fov = obs_cam_fov
+
+        self.record_cam_res = record_cam_res
+        self.record_cam_pos = record_cam_pos
+        self.record_cam_lookat = record_cam_lookat
+        self.record_cam_fov = record_cam_fov
 
         self.genesis_cfg = GenesisConfig(
             num_envs=self.num_envs,
-            device=device,
+            device=self.device,
             logging_level="warning",
-            show_viewer=show_viewer,
-            record=record,
-            video_path=video_path,
-            fps=fps,
-            cam_res=cam_res,
-            cam_pos=cam_pos,
-            cam_lookat=cam_lookat,
-            cam_fov=cam_fov,
+            show_viewer=self.show_viewer,
+            record=self.record,
+            video_path=self.video_path,
+            fps=self.fps,
+            cam_res=self.obs_cam_res,
+            cam_pos=self.obs_cam_pos,
+            cam_lookat=self.obs_cam_lookat,
+            cam_fov=self.obs_cam_fov,
         )
         self.genesis_cfg.gs_init()
         self.scene = self.genesis_cfg.scene
@@ -79,30 +82,34 @@ class Environment(gym.Env):
         self.unit = Unit(
             self.scene,
             num_envs=self.num_envs,
-            obs_cam_res=self.cam_res,
-            obs_cam_pos=self.cam_pos,
-            obs_cam_lookat=self.cam_lookat,
-            obs_cam_fov=self.cam_fov,
-            render_cam_res=self.record_cam_res,
-            render_cam_pos=self.record_cam_pos,
-            render_cam_lookat=self.record_cam_lookat,
-            render_cam_fov=self.record_cam_fov,
+            obs_cam_res=self.obs_cam_res,
+            obs_cam_pos=self.obs_cam_pos,
+            obs_cam_lookat=self.obs_cam_lookat,
+            obs_cam_fov=self.obs_cam_fov,
+            record_cam_res=self.record_cam_res,
+            record_cam_pos=self.record_cam_pos,
+            record_cam_lookat=self.record_cam_lookat,
+            record_cam_fov=self.record_cam_fov,
         )
-        self.unit.create(enable_render_camera=self._record)
-        self.crane = self.unit.crane_x7
-        self.workspace = self.unit.workspace
-        self.table_z = float(self.crane.table_z)
-        self.max_delta = float(self.crane.num_delta)
 
-        # Cube setup (3cm edge). Success if lifted above mid-height of workspace.
+        # Instantiate robot, cameras, cube in the scene.
+        self.unit.create(enable_render_camera=self.record)
+
+        self.crane_x7 = self.unit.crane_x7
+        self.workspace = self.unit.workspace
+        self.table_z = float(self.crane_x7.table_z)
+        self.max_delta = float(self.crane_x7.num_delta)
+
         self.cube = self.unit.cube
         self.cube_size = self.cube.size
         self.cube_half = self.cube_size * 0.5
-        ws_min = self.workspace.workspace_min
-        ws_max = self.workspace.workspace_max
-        self.success_height = float(ws_min[2] + 0.5 * (ws_max[2] - ws_min[2]))
 
-        self.scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -self.unit.table.table_height)))
+        self.success_height = float(self.workspace.workspace_min[2] + 0.5 * (self.workspace.workspace_max[2] - self.workspace.workspace_min[2]))
+
+        if self.is_table:
+            self.scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -self.unit.table.table_height)))
+        else:
+            self.scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, 0.0)))
 
         workspace_min = self.workspace.workspace_min + self.workspace.workspace_margin
         workspace_max = self.workspace.workspace_max - self.workspace.workspace_margin
@@ -110,21 +117,21 @@ class Environment(gym.Env):
         obs_low = np.concatenate([workspace_min, workspace_min]).astype(np.float32)
         obs_high = np.concatenate([workspace_max, workspace_max]).astype(np.float32)
 
-        self.single_action_space = spaces.Box(low=-1.0, high=1.0, shape=(action_dim,), dtype=np.float32)
+        self.single_action_space = spaces.Box(low=-1.0, high=1.0, shape=(4,), dtype=np.float32)
         self.single_observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         self.action_space = self.single_action_space
         self.observation_space = self.single_observation_space
 
-        if self._record:
+        if self.record:
             from pathlib import Path
 
-            Path(self._video_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(self.video_path).parent.mkdir(parents=True, exist_ok=True)
             self._cam = self.unit.render_camera.cam
 
         self.scene.build(n_envs=self.num_envs, env_spacing=(2.0, 3.0))
-        self.crane.set_gain()
-        self.crane.reset(envs_idx=self.env_ids.cpu().numpy())
+        self.crane_x7.set_gain()
+        self.crane_x7.reset(envs_idx=self.env_ids.cpu().numpy())
 
         self.dt_phys = self.scene.dt * self.substeps
 
@@ -134,7 +141,7 @@ class Environment(gym.Env):
         super().reset(seed=seed)
         self.step_count.zero_()
         self.scene.reset()
-        self.crane.reset(envs_idx=self.env_ids.cpu().numpy())
+        self.crane_x7.reset(envs_idx=self.env_ids.cpu().numpy())
         self._init_cache()
         cube_centers = self._sample_targets(self.num_envs)
         self.targets[:] = cube_centers
@@ -143,9 +150,9 @@ class Environment(gym.Env):
         for _ in range(10):
             self.scene.step()
 
-        if self._record and self._cam is not None:
-            self._cam.start_recording()
-            self._recording = True
+        if self.record and self.cam is not None:
+            self.cam.start_recording()
+            self.recording = True
 
         observation = self._get_obs()
         infos = [{} for _ in range(self.num_envs)]
@@ -163,12 +170,14 @@ class Environment(gym.Env):
             device=self.device,
         )
         xy = low[:2] + torch.rand((batch, 2), device=self.device) * (high[:2] - low[:2])
-        z = torch.full((batch, 1), fill_value=self.table_z + self.cube_half + 1e-3, device=self.device)
+        if self.is_table:
+            z = torch.full((batch, 1), fill_value=self.table_z + self.cube_half + 1e-3, device=self.device)
+        else:
+            z = torch.full((batch, 1), fill_value=self.cube_half + 1e-3, device=self.device)
         return torch.cat([xy, z], dim=1)
 
     @staticmethod
     def _ensure_pose_import():
-        # Work around Genesis Pose missing on rigid_link in some versions.
         try:
             import genesis.engine.entities.rigid_entity.rigid_link as _rl  # type: ignore
             from genesis.ext.pyrender.interaction.vec3 import Pose as _GsPose  # type: ignore
@@ -206,7 +215,7 @@ class Environment(gym.Env):
     def _get_end_effector_position(self):
         self._ensure_pose_import()
         try:
-            ee_link = self.crane.crane_x7.get_link(self.crane.ee_link_name)
+            ee_link = self.crane_x7.crane_x7.get_link(self.crane_x7.ee_link_name)
             pos = np.asarray(ee_link.pose.p, dtype=np.float32)
             if pos.ndim == 1:
                 pos = pos.reshape(1, -1)
@@ -226,7 +235,7 @@ class Environment(gym.Env):
         env_ids = np.r_[env_ids]
         if env_ids.size == 0:
             return
-        self.crane.reset(envs_idx=env_ids.tolist())
+        self.crane_x7.reset(envs_idx=env_ids.tolist())
         self._init_cache(env_ids)
         cube_centers = self._sample_targets(len(env_ids))
         self.targets[env_ids] = cube_centers
@@ -238,15 +247,12 @@ class Environment(gym.Env):
             action = action.unsqueeze(0)
         action = action[: self.num_envs]
 
-        # Action: delta xyz + gripper open/close flag in the last dim.
-        # If control_mode == delta_xy, z delta is zeroed.
         delta = torch.zeros((action.shape[0], 3), device=self.device, dtype=torch.float32)
         if self.control_mode == "delta_xy":
             delta[:, :2] = torch.clamp(action[:, :2], -1.0, 1.0)
         else:
             delta[:, :3] = torch.clamp(action[:, :3], -1.0, 1.0)
 
-        # Gripper command: >0 => open, <=0 => close
         grip_cmd = action[:, -1]
         open_mask = grip_cmd > 0
 
@@ -263,21 +269,20 @@ class Environment(gym.Env):
             target = current + d
             target = np.clip(target, ws_min, ws_max)
             self.ee_cache[env_idx] = torch.as_tensor(target, device=self.device, dtype=torch.float32)
-            target_world = base_pos + self.crane.rotate_vec(base_quat, target)
+            target_world = base_pos + self.crane_x7.rotate_vec(base_quat, target)
             targets_world.append(target_world)
 
         targets_world = np.asarray(targets_world, dtype=np.float64)
-        self.crane.ik(targets_world, envs_idx=self.env_ids.cpu().numpy(), target_quat=self.crane.default_ee_quat)
+        self.crane_x7.ik(targets_world, envs_idx=self.env_ids.cpu().numpy(), target_quat=self.crane_x7.default_ee_quat)
 
-        # Apply gripper command.
         if open_mask.any():
             target = np.tile(np.array([[1.57, 1.57]], dtype=np.float64), (open_mask.sum().item(), 1))
-            self.crane.crane_x7.control_dofs_position(target, self.crane.gripper_joint_dofs_idx, np.nonzero(open_mask.cpu())[0])
-            self.crane.is_open_gripper = True
+            self.crane_x7.crane_x7.control_dofs_position(target, self.crane_x7.gripper_joint_dofs_idx, np.nonzero(open_mask.cpu())[0])
+            self.crane_x7.is_open_gripper = True
         if (~open_mask).any():
             target = np.tile(np.array([[-0.0873, -0.0873]], dtype=np.float64), ((~open_mask).sum().item(), 1))
-            self.crane.crane_x7.control_dofs_position(target, self.crane.gripper_joint_dofs_idx, np.nonzero((~open_mask).cpu())[0])
-            self.crane.is_open_gripper = False
+            self.crane_x7.crane_x7.control_dofs_position(target, self.crane_x7.gripper_joint_dofs_idx, np.nonzero((~open_mask).cpu())[0])
+            self.crane_x7.is_open_gripper = False
 
     def step(self, action):
         infos = [{} for _ in range(self.num_envs)]
@@ -287,7 +292,7 @@ class Environment(gym.Env):
 
         self.scene.step(self.substeps)
 
-        if self._record and self._cam is not None:
+        if self.record and self._cam is not None:
             self._cam.render()
 
         ee_pos = self._get_end_effector_position()
@@ -324,8 +329,8 @@ class Environment(gym.Env):
         pass
 
     def close(self):
-        if self._record and self._cam is not None and self._recording:
+        if self.record and self._cam is not None and self.recording:
             try:
-                self._cam.stop_recording(save_to_filename=self._video_path, fps=self._fps)
+                self._cam.stop_recording(save_to_filename=self.video_path, fps=self.fps)
             finally:
-                self._recording = False
+                self.recording = False

@@ -15,7 +15,7 @@ class ObsCamera(Entity):
         surface=None,
         res=(128, 128),
         pos=(1.0, 1.0, 0.10),
-        lookat=(0.150, 0.0, 0.10),
+        lookat=(0.100, 0.0, 0.10),
         fov=30,
     ):
         super().__init__()

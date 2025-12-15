@@ -24,10 +24,10 @@ class Unit(object):
         obs_cam_pos=(1.0, 1.0, 0.10),
         obs_cam_lookat=(0.150, 0.0, 0.10),
         obs_cam_fov=30.0,
-        render_cam_res=(1024, 1024),
-        render_cam_pos=(1.0, 1.0, 0.10),
-        render_cam_lookat=(0.150, 0.0, 0.10),
-        render_cam_fov=30.0
+        record_cam_res=(1024, 1024),
+        record_cam_pos=(1.0, 1.0, 0.10),
+        record_cam_lookat=(0.150, 0.0, 0.10),
+        record_cam_fov=30.0
     ):
         self.scene = scene
         self.num_envs = num_envs
@@ -37,10 +37,10 @@ class Unit(object):
         self.obs_cam_pos = obs_cam_pos
         self.obs_cam_lookat = obs_cam_lookat
         self.obs_cam_fov = obs_cam_fov
-        self.render_cam_res = render_cam_res
-        self.render_cam_pos = render_cam_pos
-        self.render_cam_lookat = render_cam_lookat
-        self.render_cam_fov = render_cam_fov
+        self.record_cam_res = record_cam_res
+        self.record_cam_pos = record_cam_pos
+        self.record_cam_lookat = record_cam_lookat
+        self.record_cam_fov = record_cam_fov
 
 
         self.obs_camera = ObsCamera(
@@ -52,10 +52,10 @@ class Unit(object):
         )
         self.render_camera = RenderCamera(
             scene=self.scene,
-            res=self.render_cam_res,
-            pos=self.render_cam_pos,
-            lookat=self.render_cam_lookat,
-            fov=self.render_cam_fov
+            res=self.record_cam_res,
+            pos=self.record_cam_pos,
+            lookat=self.record_cam_lookat,
+            fov=self.record_cam_fov
         )
 
 

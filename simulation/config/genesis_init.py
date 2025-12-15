@@ -49,7 +49,6 @@ class GenesisConfig(object):
                 logger_verbose_time = False
             )
         except Exception as exc:
-            # Allow repeated initialization when an evaluator env is created after a training env.
             if "already initialized" not in str(exc).lower():
                 raise
 

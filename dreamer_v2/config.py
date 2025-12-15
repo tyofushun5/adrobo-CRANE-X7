@@ -49,10 +49,10 @@ class Config:
     record: bool = False
     video_path: str = "videos/preview.mp4"
     fps: int = 60
-    cam_res: tuple[int, int] = (128, 128)
-    cam_pos: tuple[float, float, float] = (1.0, 1.0, 0.10)
-    cam_lookat: tuple[float, float, float] = (0.150, 0.0, 0.10)
-    cam_fov: float = 30.0
+    obs_cam_res: tuple[int, int] = (128, 128)
+    obs_cam_pos: tuple[float, float, float] = (1.0, 1.0, 0.10)
+    obs_cam_lookat: tuple[float, float, float] = (0.150, 0.0, 0.10)
+    obs_cam_fov: float = 30.0
     substeps: int = 10
 
 
