@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 from typing import Dict
 
@@ -109,28 +108,11 @@ def evaluation(eval_env: Environment, policy: Agent, cfg) -> float:
 
 
 def build_config() -> Config:
-    parser = argparse.ArgumentParser(description="Train DreamerV2 on the custom Genesis environment.")
-    parser.add_argument("--iter", type=int, default=None, help="Total training iterations.")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed.")
-    parser.add_argument("--device", type=str, default=None, help="cpu / cuda / auto.")
-    parser.add_argument("--image_size", type=int, default=None, help="Square image size for Dreamer inputs.")
-    parser.add_argument("--seed_iter", type=int, default=None, help="Seed steps collected with random policy.")
-    parser.add_argument("--pretrain_iters", type=int, default=None, help="World model pretrain iterations.")
-    parser.add_argument("--save_path", type=str, default=None, help="Checkpoint path.")
-    parser.add_argument("--show_viewer", action="store_true", help="Show Genesis viewer during training.")
-    parser.add_argument("--record", action="store_true", help="Record training camera stream.")
-    parser.add_argument("--control_mode", type=str, default=None, choices=["delta_xy", "delta_xyz"], help="EE delta mode.")
-    parser.add_argument("--env_max_steps", type=int, default=None, help="Episode length before truncation.")
-    parser.add_argument("--substeps", type=int, default=None, help="Physics substeps per action.")
-    parser.add_argument("--sim_device", type=str, default=None, choices=["cpu", "gpu"], help="Genesis simulation device.")
-    args = parser.parse_args()
-
     cfg = Config()
-    # Environment-specific additions
     cfg.env_max_steps = 300
     cfg.control_mode = "delta_xy"
     cfg.sim_device = "cpu"
-    cfg.show_viewer = False
+    cfg.show_viewer = True
     cfg.record = False
     cfg.video_path = "videos/preview.mp4"
     cfg.fps = 60
@@ -140,32 +122,6 @@ def build_config() -> Config:
     cfg.cam_fov = 30.0
     cfg.success_threshold = 0.02
     cfg.substeps = 10
-
-    if args.iter is not None:
-        cfg.iter = args.iter
-    if args.seed is not None:
-        cfg.seed = args.seed
-    if args.device is not None:
-        cfg.device = args.device
-    if args.image_size is not None:
-        cfg.image_size = args.image_size
-    if args.seed_iter is not None:
-        cfg.seed_iter = args.seed_iter
-    if args.pretrain_iters is not None:
-        cfg.pretrain_iters = args.pretrain_iters
-    if args.save_path is not None:
-        cfg.save_path = args.save_path
-    if args.control_mode is not None:
-        cfg.control_mode = args.control_mode
-    if args.env_max_steps is not None:
-        cfg.env_max_steps = args.env_max_steps
-    if args.substeps is not None:
-        cfg.substeps = args.substeps
-    if args.sim_device is not None:
-        cfg.sim_device = args.sim_device
-
-    cfg.show_viewer = args.show_viewer
-    cfg.record = args.record
 
     return cfg
 

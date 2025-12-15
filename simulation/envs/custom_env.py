@@ -25,11 +25,13 @@ class Environment(gym.Env):
         cam_pos=(1.0, 1.0, 0.10),
         cam_lookat=(0.150, 0.0, 0.10),
         cam_fov: float = 30.0,
+        record_cam_res=None,
+        record_cam_pos=None,
+        record_cam_lookat=None,
+        record_cam_fov: float | None = None,
         success_threshold: float = 0.02,
         substeps: int = 10,
     ):
-        if control_mode not in ("delta_xy", "delta_xyz"):
-            raise ValueError(f"Unsupported control_mode '{control_mode}'")
 
         action_dim = 2 if control_mode == "delta_xy" else 3
 
@@ -53,6 +55,10 @@ class Environment(gym.Env):
         self.cam_pos = cam_pos
         self.cam_lookat = cam_lookat
         self.cam_fov = cam_fov
+        self.record_cam_res = record_cam_res or (1024, 1024)
+        self.record_cam_pos = record_cam_pos or cam_pos
+        self.record_cam_lookat = record_cam_lookat or cam_lookat
+        self.record_cam_fov = record_cam_fov or cam_fov
 
         self.genesis_cfg = GenesisConfig(
             num_envs=self.num_envs,
@@ -70,12 +76,31 @@ class Environment(gym.Env):
         self.genesis_cfg.gs_init()
         self.scene = self.genesis_cfg.scene
 
-        self.unit = Unit(self.scene, num_envs=self.num_envs)
-        self.unit.create()
+        self.unit = Unit(
+            self.scene,
+            num_envs=self.num_envs,
+            obs_cam_res=self.cam_res,
+            obs_cam_pos=self.cam_pos,
+            obs_cam_lookat=self.cam_lookat,
+            obs_cam_fov=self.cam_fov,
+            render_cam_res=self.record_cam_res,
+            render_cam_pos=self.record_cam_pos,
+            render_cam_lookat=self.record_cam_lookat,
+            render_cam_fov=self.record_cam_fov,
+        )
+        self.unit.create(enable_render_camera=self._record)
         self.crane = self.unit.crane_x7
         self.workspace = self.unit.workspace
         self.table_z = float(self.crane.table_z)
         self.max_delta = float(self.crane.num_delta)
+
+        # Cube setup (3cm edge). Success if lifted above mid-height of workspace.
+        self.cube = self.unit.cube
+        self.cube_size = self.cube.size
+        self.cube_half = self.cube_size * 0.5
+        ws_min = self.workspace.workspace_min
+        ws_max = self.workspace.workspace_max
+        self.success_height = float(ws_min[2] + 0.5 * (ws_max[2] - ws_min[2]))
 
         self.scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -self.unit.table.table_height)))
 
@@ -95,13 +120,7 @@ class Environment(gym.Env):
             from pathlib import Path
 
             Path(self._video_path).parent.mkdir(parents=True, exist_ok=True)
-            self._cam = self.scene.add_camera(
-                res=self.cam_res,
-                pos=self.cam_pos,
-                lookat=self.cam_lookat,
-                fov=self.cam_fov,
-                GUI=False,
-            )
+            self._cam = self.unit.render_camera.cam
 
         self.scene.build(n_envs=self.num_envs, env_spacing=(2.0, 3.0))
         self.crane.set_gain()
@@ -117,7 +136,13 @@ class Environment(gym.Env):
         self.scene.reset()
         self.crane.reset(envs_idx=self.env_ids.cpu().numpy())
         self._init_cache()
-        self.targets[:] = self._sample_targets(self.num_envs)
+        cube_centers = self._sample_targets(self.num_envs)
+        self.targets[:] = cube_centers
+        self._set_cube_pose(cube_centers)
+
+        # Let the cube settle on the table.
+        for _ in range(10):
+            self.scene.step()
 
         if self._record and self._cam is not None:
             self._cam.start_recording()
@@ -138,14 +163,9 @@ class Environment(gym.Env):
             dtype=torch.float32,
             device=self.device,
         )
-
-        if self.control_mode == "delta_xy":
-            xy = low[:2] + torch.rand((batch, 2), device=self.device) * (high[:2] - low[:2])
-            z = torch.full((batch, 1), fill_value=self.table_z, device=self.device)
-            return torch.cat([xy, z], dim=1)
-
-        rand = torch.rand((batch, 3), device=self.device)
-        return low + rand * (high - low)
+        xy = low[:2] + torch.rand((batch, 2), device=self.device) * (high[:2] - low[:2])
+        z = torch.full((batch, 1), fill_value=self.table_z + self.cube_half + 1e-3, device=self.device)
+        return torch.cat([xy, z], dim=1)
 
     @staticmethod
     def _ensure_pose_import():
@@ -168,6 +188,22 @@ class Environment(gym.Env):
         cache = np.tile(midpoint, (len(env_ids), 1))
         self.ee_cache[env_ids] = torch.as_tensor(cache, dtype=torch.float32, device=self.device)
 
+    def _set_cube_pose(self, centers: torch.Tensor, env_ids=None):
+        if env_ids is None:
+            env_ids = self.env_ids.cpu().numpy()
+        centers_np = centers.detach().cpu().numpy()
+        self.cube.reset(center=centers_np, envs_idx=env_ids)
+
+    def _get_cube_position(self):
+        self._ensure_pose_import()
+        try:
+            pos = np.asarray(self.cube.cube.pose.p, dtype=np.float32)
+            if pos.ndim == 1:
+                pos = pos.reshape(1, -1)
+        except Exception:
+            pos = np.zeros((self.num_envs, 3), dtype=np.float32)
+        return torch.as_tensor(pos, dtype=torch.float32, device=self.device)
+
     def _get_end_effector_position(self):
         self._ensure_pose_import()
         try:
@@ -179,10 +215,13 @@ class Environment(gym.Env):
             pos = np.zeros((self.num_envs, 3), dtype=np.float32)
         return torch.as_tensor(pos, dtype=torch.float32, device=self.device)
 
-    def _get_obs(self, ee_pos: torch.Tensor | None = None):
+    def _get_obs(self, ee_pos: torch.Tensor | None = None, cube_pos: torch.Tensor | None = None):
         if ee_pos is None:
             ee_pos = self._get_end_effector_position()
-        return torch.cat([ee_pos, self.targets], dim=1)
+        if cube_pos is None:
+            cube_pos = self._get_cube_position()
+        # Return EE position and cube position (same shape as original ee+target layout).
+        return torch.cat([ee_pos, cube_pos], dim=1)
 
     def _reset_indices(self, env_ids):
         env_ids = np.r_[env_ids]
@@ -190,7 +229,9 @@ class Environment(gym.Env):
             return
         self.crane.reset(envs_idx=env_ids.tolist())
         self._init_cache(env_ids)
-        self.targets[env_ids] = self._sample_targets(len(env_ids))
+        cube_centers = self._sample_targets(len(env_ids))
+        self.targets[env_ids] = cube_centers
+        self._set_cube_pose(cube_centers, env_ids)
         self.step_count[env_ids] = 0
 
     def _apply_action(self, action: torch.Tensor) -> None:
@@ -198,11 +239,17 @@ class Environment(gym.Env):
             action = action.unsqueeze(0)
         action = action[: self.num_envs]
 
+        # Action: delta xyz + gripper open/close flag in the last dim.
+        # If control_mode == delta_xy, z delta is zeroed.
+        delta = torch.zeros((action.shape[0], 3), device=self.device, dtype=torch.float32)
         if self.control_mode == "delta_xy":
-            delta = torch.zeros((action.shape[0], 3), device=self.device, dtype=torch.float32)
             delta[:, :2] = torch.clamp(action[:, :2], -1.0, 1.0)
         else:
-            delta = torch.clamp(action[:, :3], -1.0, 1.0)
+            delta[:, :3] = torch.clamp(action[:, :3], -1.0, 1.0)
+
+        # Gripper command: >0 => open, <=0 => close
+        grip_cmd = action[:, -1]
+        open_mask = grip_cmd > 0
 
         delta_np = delta.cpu().numpy() * self.max_delta
 
@@ -223,6 +270,16 @@ class Environment(gym.Env):
         targets_world = np.asarray(targets_world, dtype=np.float64)
         self.crane.ik(targets_world, envs_idx=self.env_ids.cpu().numpy(), target_quat=self.crane.default_ee_quat)
 
+        # Apply gripper command.
+        if open_mask.any():
+            target = np.tile(np.array([[1.57, 1.57]], dtype=np.float64), (open_mask.sum().item(), 1))
+            self.crane.crane_x7.control_dofs_position(target, self.crane.gripper_joint_dofs_idx, np.nonzero(open_mask.cpu())[0])
+            self.crane.is_open_gripper = True
+        if (~open_mask).any():
+            target = np.tile(np.array([[-0.0873, -0.0873]], dtype=np.float64), ((~open_mask).sum().item(), 1))
+            self.crane.crane_x7.control_dofs_position(target, self.crane.gripper_joint_dofs_idx, np.nonzero((~open_mask).cpu())[0])
+            self.crane.is_open_gripper = False
+
     def step(self, action):
         infos = [{} for _ in range(self.num_envs)]
 
@@ -235,15 +292,17 @@ class Environment(gym.Env):
             self._cam.render()
 
         ee_pos = self._get_end_effector_position()
-        dist = torch.linalg.norm(ee_pos - self.targets, dim=1)
-        reward = 1.0 - torch.tanh(dist * 5.0)
-        success = dist <= self.success_threshold
+        cube_pos = self._get_cube_position()
+        cube_height = cube_pos[:, 2]
+        success = cube_height >= self.success_height
+        reward = success.float()
 
         self.step_count += 1
         truncated = self.step_count >= self.max_steps
         terminated = success
-
-        observation = self._get_obs(ee_pos)
+        # Keep observation shape: ee position + cube position.
+        self.targets = cube_pos
+        observation = self._get_obs(ee_pos, cube_pos)
 
         done_mask = torch.logical_or(terminated, truncated)
         if done_mask.any():
@@ -251,7 +310,8 @@ class Environment(gym.Env):
             self._reset_indices(done_ids.cpu().numpy())
 
         for idx in range(self.num_envs):
-            infos[idx]["distance"] = float(dist[idx].cpu())
+            infos[idx]["cube_height"] = float(cube_height[idx].cpu())
+            infos[idx]["success"] = bool(success[idx].cpu())
 
         return (
             observation.cpu().numpy(),

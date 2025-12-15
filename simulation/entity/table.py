@@ -34,6 +34,7 @@ class Table(object):
             pos=self.offset,
             quat=self.quat,
             fixed=True,
+            collision=True,
             parse_glb_with_zup=False,
         )
 
@@ -53,4 +54,3 @@ class Table(object):
     @property
     def table_height(self):
         return self.__table_height
-

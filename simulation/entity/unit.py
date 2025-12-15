@@ -5,7 +5,8 @@ import genesis as gs
 from simulation.entity.crane_x7 import CraneX7
 from simulation.entity.table import Table
 from simulation.entity.workspace import Workspace
-from simulation.entity.camera import Camera
+from simulation.entity.camera import ObsCamera, RenderCamera
+from simulation.entity.cube import Cube
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,20 +14,56 @@ repo_root = os.path.abspath(os.path.join(script_dir, os.pardir, os.pardir))
 
 
 class Unit(object):
-    def __init__(self, scene, num_envs=1):
+    def __init__(
+        self,
+        scene,
+        num_envs=1,
+        obs_cam_res=(128, 128),
+        obs_cam_pos=(1.0, 1.0, 0.10),
+        obs_cam_lookat=(0.150, 0.0, 0.10),
+        obs_cam_fov=30.0,
+        render_cam_res=(1024, 1024),
+        render_cam_pos=(1.0, 1.0, 0.10),
+        render_cam_lookat=(0.150, 0.0, 0.10),
+        render_cam_fov=30.0,
+    ):
         self.scene = scene
         self.num_envs = num_envs
 
         self.crane_x7 = CraneX7(scene=self.scene, num_envs=self.num_envs, root_fixed=True)
         self.table = Table(scene)
         self.workspace = Workspace(scene)
-        self.camera = Camera(scene)
+        self.camera = ObsCamera(
+            scene,
+            res=obs_cam_res,
+            pos=obs_cam_pos,
+            lookat=obs_cam_lookat,
+            fov=obs_cam_fov,
+        )
+        self.render_camera = RenderCamera(
+            scene,
+            res=render_cam_res,
+            pos=render_cam_pos,
+            lookat=render_cam_lookat,
+            fov=render_cam_fov,
+        )
 
-    def create(self):
+        cube_center = (
+            self.workspace.workspace_min[0],
+            self.workspace.workspace_min[1],
+            self.crane_x7.table_z + 0.03 * 0.5 + 1e-3,
+        )
+        self.cube = Cube(scene=self.scene, center=cube_center, size=0.03, fixed=False)
+        self.cube_half = self.cube.size * 0.5
+
+    def create(self, enable_render_camera: bool = False):
         self.crane_x7.create()
         self.table.create()
-        self.workspace.create()
+        # self.workspace.create()
         self.camera.create()
+        if enable_render_camera:
+            self.render_camera.create()
+        self.cube.create()
 
     def step(self, *args, **kwargs):
         self.crane_x7.action(*args, **kwargs)
@@ -38,6 +75,19 @@ class Unit(object):
     def reset(self):
         self.crane_x7.set_gain()
         self.crane_x7.reset()
+
+        # Randomize cube pose within workspace on the table.
+        low = self.workspace.workspace_min + self.workspace.workspace_margin
+        high = self.workspace.workspace_max - self.workspace.workspace_margin
+        if self.num_envs == 1:
+            xy = low[:2] + np.random.rand(2) * (high[:2] - low[:2])
+            z = self.crane_x7.table_z + self.cube_half + 1e-3
+            center = np.array([xy[0], xy[1], z], dtype=np.float64)
+        else:
+            xy = low[:2] + np.random.rand(self.num_envs, 2) * (high[:2] - low[:2])
+            z = np.full((self.num_envs, 1), self.crane_x7.table_z + self.cube_half + 1e-3, dtype=np.float64)
+            center = np.concatenate([xy, z], axis=1)
+        self.cube.reset(center=center, envs_idx=np.arange(self.num_envs))
 
         for _ in range(100):
             self.scene.step()
@@ -59,7 +109,7 @@ if __name__ == "__main__":
     )
 
     scene = gs.Scene(
-        sim_options=gs.options.SimOptions(dt=0.01, gravity=(0.0, 0.0, 0.0)),
+        sim_options=gs.options.SimOptions(dt=0.01, gravity=(0.0, 0.0, -9.81)),
         rigid_options=gs.options.RigidOptions(
             enable_joint_limit=True,
             enable_collision=True,

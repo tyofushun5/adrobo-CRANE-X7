@@ -9,7 +9,7 @@ from simulation.envs.custom_env import Environment
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Genesis 環境で CRANE-X7 のロールアウトを動画保存します。")
     parser.add_argument("--output", type=str, default="videos/preview.mp4", help="保存先の動画パス")
-    parser.add_argument("--steps", type=int, default=300, help="シミュレーションステップ数")
+    parser.add_argument("--steps", type=int, default=1000, help="シミュレーションステップ数")
     parser.add_argument("--fps", type=int, default=30, help="動画のFPS")
     parser.add_argument("--device", type=str, default="cpu", help="cpu か gpu")
     parser.add_argument("--show_viewer", action="store_true", help="Genesis ビューアを表示する場合に指定")
@@ -17,7 +17,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: bool) -> None:
-    # Environment 側で録画をオンにする
     env = Environment(
         num_envs=1,
         max_steps=steps,

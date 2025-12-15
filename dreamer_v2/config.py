@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     buffer_size: int = 100_000
-    batch_size: int = 16
+    batch_size: int = 32
     seq_length: int = 50
     imagination_horizon: int = 15
 
@@ -30,7 +30,7 @@ class Config:
     discount: float = 0.995
     lambda_: float = 0.95
 
-    iter: int = 100
+    iter: int = 10000
     seed_iter: int = 1000
     eval_freq: int = 10
     eval_episodes: int = 5
