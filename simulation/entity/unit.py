@@ -18,6 +18,8 @@ class Unit(object):
         self,
         scene,
         num_envs=1,
+        is_table=False,
+        is_workspace=False,
         obs_cam_res=(128, 128),
         obs_cam_pos=(1.0, 1.0, 0.10),
         obs_cam_lookat=(0.150, 0.0, 0.10),
@@ -25,58 +27,76 @@ class Unit(object):
         render_cam_res=(1024, 1024),
         render_cam_pos=(1.0, 1.0, 0.10),
         render_cam_lookat=(0.150, 0.0, 0.10),
-        render_cam_fov=30.0,
+        render_cam_fov=30.0
     ):
         self.scene = scene
         self.num_envs = num_envs
+        self.is_table = is_table
+        self.is_workspace = is_workspace
+        self.obs_cam_res = obs_cam_res
+        self.obs_cam_pos = obs_cam_pos
+        self.obs_cam_lookat = obs_cam_lookat
+        self.obs_cam_fov = obs_cam_fov
+        self.render_cam_res = render_cam_res
+        self.render_cam_pos = render_cam_pos
+        self.render_cam_lookat = render_cam_lookat
+        self.render_cam_fov = render_cam_fov
 
-        self.crane_x7 = CraneX7(scene=self.scene, num_envs=self.num_envs, root_fixed=True)
-        self.table = Table(scene)
-        self.workspace = Workspace(scene)
-        self.camera = ObsCamera(
-            scene,
-            res=obs_cam_res,
-            pos=obs_cam_pos,
-            lookat=obs_cam_lookat,
-            fov=obs_cam_fov,
+
+        self.obs_camera = ObsCamera(
+            scene=self.scene,
+            res=self.obs_cam_res,
+            pos=self.obs_cam_pos,
+            lookat=self.obs_cam_lookat,
+            fov=self.obs_cam_fov
         )
         self.render_camera = RenderCamera(
-            scene,
-            res=render_cam_res,
-            pos=render_cam_pos,
-            lookat=render_cam_lookat,
-            fov=render_cam_fov,
+            scene=self.scene,
+            res=self.render_cam_res,
+            pos=self.render_cam_pos,
+            lookat=self.render_cam_lookat,
+            fov=self.render_cam_fov
         )
 
-        cube_center = (
+
+        self.crane_x7 = CraneX7(scene=self.scene, num_envs=self.num_envs, root_fixed=True)
+        self.table = Table(self.scene)
+        self.workspace = Workspace(self.scene)
+
+        self.cube_center = (
             self.workspace.workspace_min[0],
             self.workspace.workspace_min[1],
             self.crane_x7.table_z + 0.03 * 0.5 + 1e-3,
         )
-        self.cube = Cube(scene=self.scene, center=cube_center, size=0.03, fixed=False)
+
+        self.cube = Cube(scene=self.scene, center=self.cube_center, size=0.04, fixed=False)
         self.cube_half = self.cube.size * 0.5
 
     def create(self, enable_render_camera: bool = False):
         self.crane_x7.create()
-        self.table.create()
-        # self.workspace.create()
-        self.camera.create()
+        self.obs_camera.create()
+        self.cube.create()
+
+        if self.is_table:
+            self.table.create()
+
+        if self.is_workspace:
+            self.workspace.create()
+
         if enable_render_camera:
             self.render_camera.create()
-        self.cube.create()
 
     def step(self, *args, **kwargs):
         self.crane_x7.action(*args, **kwargs)
 
     def get_obs(self):
         self.crane_x7.get_joint_positions()
-        self.camera.get_image()
+        self.obs_camera.get_image()
 
     def reset(self):
         self.crane_x7.set_gain()
         self.crane_x7.reset()
 
-        # Randomize cube pose within workspace on the table.
         low = self.workspace.workspace_min + self.workspace.workspace_margin
         high = self.workspace.workspace_max - self.workspace.workspace_margin
         if self.num_envs == 1:
@@ -95,8 +115,7 @@ class Unit(object):
 
 if __name__ == "__main__":
     num_envs = 1
-    mode = "delta_xy"
-    draw_workspace_bounds = True
+    mode = "discrete_xyz"
 
     gs.init(
         seed=None,
@@ -145,23 +164,22 @@ if __name__ == "__main__":
     )
 
 
-    unit = Unit(scene, num_envs=num_envs)
+    unit = Unit(scene=scene, num_envs=num_envs, is_workspace=True)
     unit.create()
 
-    plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -unit.table.table_height)))
+    if unit.is_table:
+        plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, -unit.table.table_height)))
+    else:
+        plane = scene.add_entity(gs.morphs.Plane(pos=(0.0, 0.0, 0.0)))
 
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
 
     unit.reset()
 
-    if mode == "workspace_vis":
-        while scene.viewer.is_alive():
-            scene.step()
-    else:
-        num_steps = 10000
-        rng = np.random.default_rng(0)
-        for _ in range(num_steps):
-            action = rng.integers(0, 8, size=())
-            unit.step(action=action)
-            unit.get_obs()
-            scene.step()
+    num_steps = 10000
+    rng = np.random.default_rng(0)
+    for _ in range(num_steps):
+        action = rng.integers(0, 8, size=())
+        unit.step(action=action)
+        unit.get_obs()
+        scene.step()

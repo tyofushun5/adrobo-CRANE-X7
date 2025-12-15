@@ -140,7 +140,6 @@ class Environment(gym.Env):
         self.targets[:] = cube_centers
         self._set_cube_pose(cube_centers)
 
-        # Let the cube settle on the table.
         for _ in range(10):
             self.scene.step()
 
@@ -300,7 +299,7 @@ class Environment(gym.Env):
         self.step_count += 1
         truncated = self.step_count >= self.max_steps
         terminated = success
-        # Keep observation shape: ee position + cube position.
+
         self.targets = cube_pos
         observation = self._get_obs(ee_pos, cube_pos)
 

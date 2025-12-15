@@ -25,6 +25,7 @@ from dreamer_v2 import (
 from dreamer_v2.distributions import MSE
 from dreamer_v2.tools.set_seed import set_seed
 from simulation.envs.custom_env import Environment
+from simulation.reward import transform_reward
 
 
 def to_hwc_image(frame) -> np.ndarray:
@@ -51,10 +52,6 @@ def prepare_image(frame, target_size: int) -> np.ndarray:
         tensor = F.interpolate(tensor, size=(target_size, target_size), mode="bilinear", align_corners=False)
         image = tensor.squeeze(0).permute(1, 2, 0).byte().numpy()
     return image
-
-
-def transform_reward(reward: float | np.ndarray) -> float:
-    return float(np.tanh(reward))
 
 
 def capture_observation(env: Environment, image_size: int) -> Dict[str, np.ndarray]:
@@ -108,22 +105,7 @@ def evaluation(eval_env: Environment, policy: Agent, cfg) -> float:
 
 
 def build_config() -> Config:
-    cfg = Config()
-    cfg.env_max_steps = 300
-    cfg.control_mode = "discrete_xyz"
-    cfg.sim_device = "cpu"
-    cfg.show_viewer = False
-    cfg.record = False
-    cfg.video_path = "videos/preview.mp4"
-    cfg.fps = 60
-    cfg.cam_res = (128, 128)
-    cfg.cam_pos = (1.0, 1.0, 0.10)
-    cfg.cam_lookat = (0.150, 0.0, 0.10)
-    cfg.cam_fov = 30.0
-    cfg.success_threshold = 0.02
-    cfg.substeps = 10
-
-    return cfg
+    return Config()
 
 
 def train(cfg: Config):

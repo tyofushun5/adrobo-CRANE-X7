@@ -16,10 +16,10 @@ class Cube(Entity):
         scene=None,
         surface=None,
         center=(0.30, 0.0, 0.05),
-        size: float = 0.05,
+        size=0.04,
         quat=(1.0, 0.0, 0.0, 0.0),
         color=(1.0, 0.9, 0.0),
-        fixed: bool = False,
+        fixed=False,
     ):
         super().__init__(scene=scene, surface=surface)
         self.scene = scene

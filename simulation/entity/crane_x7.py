@@ -281,7 +281,6 @@ class CraneX7(object):
         return v + 2.0 * (w * uv + uuv)
 
 if __name__ == "__main__":
-    os.environ.setdefault("TMPDIR", "/tmp")
     num_envs = 1
     mode = "discrete_xyz"
     draw_workspace_bounds = True

@@ -36,13 +36,12 @@ class Config:
     eval_episodes: int = 5
     pretrain_iters: int = 200
     log_freq: int = 100
-    image_size: int = 64
+    image_size: int = 128
     seed: int = 1
     device: str = "cuda"
     save_path: str = "dreamer_agent.pth"
     checkpoint_freq: int = 5000
 
-    # Genesis custom env defaults
     env_max_steps: int = 300
     control_mode: str = "discrete_xyz"
     sim_device: str = "cpu"
@@ -54,7 +53,6 @@ class Config:
     cam_pos: tuple[float, float, float] = (1.0, 1.0, 0.10)
     cam_lookat: tuple[float, float, float] = (0.150, 0.0, 0.10)
     cam_fov: float = 30.0
-    success_threshold: float = 0.02
     substeps: int = 10
 
 
