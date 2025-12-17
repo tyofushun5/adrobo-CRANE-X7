@@ -89,13 +89,14 @@ class CraneX7(object):
             visualization=True,
             collision=True,
             requires_jac_and_IK=True,
+            prioritize_urdf_material=True,
             fixed=self.root_fixed,
         )
 
         self.crane_x7 = self.scene.add_entity(
             morph=morph,
             material=None,
-            surface=self.surfaces,
+            surface=self.surface,
             visualize_contact=False,
             vis_mode="visual",
         )
