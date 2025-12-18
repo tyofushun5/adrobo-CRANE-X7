@@ -122,7 +122,7 @@ if __name__ == "__main__":
         precision="32",
         debug=False,
         eps=1e-12,
-        backend=gs.cpu,
+        backend=gs.gpu,
         theme="dark",
         logger_verbose_time=False,
     )

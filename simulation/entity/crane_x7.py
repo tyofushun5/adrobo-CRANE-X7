@@ -57,7 +57,7 @@ class CraneX7(object):
         self.ee_link = None
 
         self.num_delta = 0.01
-        self.table_z = 0.05
+        self.table_z = 0.0
 
         self.default_ee_quat = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
         self.__ee_cache = None
