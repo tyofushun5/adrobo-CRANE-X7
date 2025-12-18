@@ -36,7 +36,7 @@ class Config:
     eval_episodes: int = 5
     pretrain_iters: int = 200
     log_freq: int = 100
-    image_size: int = 128
+    image_size: int = 64
     seed: int = 1
     device: str = "cuda"
     save_path: str = "dreamer_agent.pth"
