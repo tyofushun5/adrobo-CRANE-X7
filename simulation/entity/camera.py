@@ -15,7 +15,7 @@ class ObsCamera(Entity):
         surface=None,
         res=(64, 64),
         pos=(1.0, 1.0, 0.10),
-        lookat=(0.100, 0.0, 0.10),
+        lookat=(0.200, 0.0, 0.10),
         fov=30,
     ):
         super().__init__()
@@ -48,7 +48,7 @@ class RenderCamera(Entity):
         surface=None,
         res=(1024, 1024),
         pos=(1.0, 1.0, 0.10),
-        lookat=(0.100, 0.0, 0.10),
+        lookat=(0.200, 0.0, 0.10),
         fov=30,
     ):
         super().__init__()
