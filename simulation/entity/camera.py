@@ -46,7 +46,7 @@ class RenderCamera(Entity):
         self,
         scene=None,
         surface=None,
-        res=(1024, 1024),
+        res=(2048, 2048),
         pos=(1.0, 1.0, 0.10),
         lookat=(0.200, 0.0, 0.10),
         fov=30,
