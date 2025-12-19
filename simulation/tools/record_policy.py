@@ -9,7 +9,7 @@ from simulation.envs.custom_env import Environment
 from simulation.train.train import capture_observation
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent_iter5000.pth"
+CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent.pth"
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,10 +19,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--show_viewer", action="store_true")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=str(CHECKPOINT_PATH.with_name("dreamer_agent.pth")),
+        help="読み込むポリシーのパス。デフォルトは学習スクリプトのsave_pathと同じファイル。",
+    )
     return parser.parse_args()
 
 
-def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: bool) -> None:
+def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: bool, checkpoint: str) -> None:
     env = Environment(
         num_envs=1,
         max_steps=steps,
@@ -34,7 +40,13 @@ def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: 
         fps=fps,
     )
 
-    policy = torch.load(str(CHECKPOINT_PATH), map_location=device)
+    ckpt_path = Path(checkpoint)
+    if not ckpt_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+
+    policy = torch.load(str(ckpt_path), map_location=device)
+    if policy is None:
+        raise RuntimeError(f"Checkpoint '{ckpt_path}' did not contain a policy object.")
     policy.to(torch.device(device))
     policy.reset()
 
@@ -63,6 +75,7 @@ def main():
         fps=args.fps,
         device=args.device,
         show_viewer=args.show_viewer,
+        checkpoint=args.checkpoint,
     )
 
 
