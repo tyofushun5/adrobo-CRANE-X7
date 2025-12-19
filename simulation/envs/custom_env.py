@@ -150,8 +150,9 @@ class Environment(gym.Env):
         for _ in range(10):
             self.scene.step()
 
-        if self.record and self.cam is not None:
-            self.cam.start_recording()
+        # Start recording if a render camera is available.
+        if self.record and self._cam is not None:
+            self._cam.start_recording()
             self.recording = True
 
         observation = self._get_obs()

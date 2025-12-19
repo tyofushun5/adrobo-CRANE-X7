@@ -37,6 +37,7 @@ class GenesisConfig(object):
 
     def gs_init(self):
 
+        device_str = str(self.device)
         try:
             gs.init(
                 seed = self.seed,
@@ -44,7 +45,7 @@ class GenesisConfig(object):
                 debug = False,
                 eps = 1e-12,
                 logging_level = self.logging_level,
-                backend = gs.cpu if self.device == 'cpu' else gs.gpu,
+                backend = gs.cpu if device_str == 'cpu' else gs.gpu,
                 theme = 'dark',
                 logger_verbose_time = False
             )

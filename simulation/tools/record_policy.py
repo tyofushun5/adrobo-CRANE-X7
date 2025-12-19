@@ -3,13 +3,15 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from torch.serialization import add_safe_globals
 
 from dreamer_v2.config import Config
+from dreamer_v2.agent import Agent
 from simulation.envs.custom_env import Environment
 from simulation.train.train import capture_observation
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent.pth"
+CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent_iter500.pth"
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,7 +46,9 @@ def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: 
     if not ckpt_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
-    policy = torch.load(str(ckpt_path), map_location=device)
+    # Explicitly allow loading Agent objects and disable weights-only mode (PyTorch 2.6+ default).
+    add_safe_globals([Agent])
+    policy = torch.load(str(ckpt_path), map_location=device, weights_only=False)
     if policy is None:
         raise RuntimeError(f"Checkpoint '{ckpt_path}' did not contain a policy object.")
     policy.to(torch.device(device))

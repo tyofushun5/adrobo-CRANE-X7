@@ -38,9 +38,12 @@ class Agent(nn.Module):
         self.rnn_hidden = torch.zeros_like(self.rnn_hidden)
 
     def to(self, device):
+        # Match torch.nn.Module.to signature by returning self so callers can chain.
         self.device = device
+        super().to(device)
         self.encoder.to(device)
         self.decoder.to(device)
         self.rssm.to(device)
         self.action_model.to(device)
         self.rnn_hidden = self.rnn_hidden.to(device)
+        return self
