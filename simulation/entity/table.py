@@ -28,20 +28,47 @@ class Table(object):
         self.quat = math.cos(-math.pi / 2), 0.0, 0.0, math.sin(-math.pi / 2)
 
     def create(self):
-        morph = gs.morphs.Mesh(
+        visual = gs.morphs.Mesh(
             file=self.table_path,
             scale=self.scale,
             pos=self.offset,
             quat=self.quat,
             fixed=True,
-            collision=True,
+            collision=False,
             parse_glb_with_zup=False,
         )
-
-        self.table = self.scene.add_entity(
-            morph=morph,
+        self.scene.add_entity(
+            morph=visual,
             material=None,
             surface=self.surface,
+            visualize_contact=False,
+            vis_mode="visual",
+        )
+
+        half_x = 1.209 / 2
+        half_y = 2.418 / 2
+        half_z = self.__table_height / 2
+        lower = (
+            self.offset[0] - half_x,
+            self.offset[1] - half_y,
+            self.offset[2],
+        )
+        upper = (
+            self.offset[0] + half_x,
+            self.offset[1] + half_y,
+            self.offset[2] + self.__table_height,
+        )
+        collision = gs.morphs.Box(
+            lower=lower,
+            upper=upper,
+            visualization=False,
+            collision=True,
+            fixed=True,
+        )
+        self.table = self.scene.add_entity(
+            morph=collision,
+            material=None,
+            surface=None,
             visualize_contact=False,
             vis_mode="visual",
         )

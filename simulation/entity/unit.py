@@ -29,6 +29,7 @@ class Unit(object):
         record_cam_lookat=(0.150, 0.0, 0.10),
         record_cam_fov=30.0
     ):
+
         self.scene = scene
         self.num_envs = num_envs
         self.is_table = is_table
@@ -50,6 +51,7 @@ class Unit(object):
             lookat=self.obs_cam_lookat,
             fov=self.obs_cam_fov
         )
+
         self.render_camera = RenderCamera(
             scene=self.scene,
             res=self.record_cam_res,
@@ -122,7 +124,7 @@ if __name__ == "__main__":
         precision="32",
         debug=False,
         eps=1e-12,
-        backend=gs.gpu,
+        backend=gs.cpu,
         theme="dark",
         logger_verbose_time=False,
     )
@@ -164,7 +166,7 @@ if __name__ == "__main__":
     )
 
 
-    unit = Unit(scene=scene, num_envs=num_envs, is_workspace=True)
+    unit = Unit(scene=scene, num_envs=num_envs, is_workspace=True, is_table=True)
     unit.create()
 
     if unit.is_table:
