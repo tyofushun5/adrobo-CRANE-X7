@@ -75,11 +75,11 @@ class GenesisConfig(object):
                 camera_fov=self.cam_fov,
             ),
             vis_options=gs.options.VisOptions(
-                show_world_frame=True,
+                show_world_frame=False,
                 world_frame_size=1.0,
                 show_link_frame=False,
                 show_cameras=False,
-                plane_reflection=True,
+                plane_reflection=False,
                 shadow=True,
                 background_color=(0.02, 0.04, 0.08),
                 ambient_light=(0.12, 0.12, 0.12),

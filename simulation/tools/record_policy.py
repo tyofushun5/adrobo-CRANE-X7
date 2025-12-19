@@ -11,7 +11,7 @@ from simulation.envs.custom_env import Environment
 from simulation.train.train import capture_observation
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent_iter500.pth"
+CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent_iter700.pth"
 
 
 def parse_args() -> argparse.Namespace:
