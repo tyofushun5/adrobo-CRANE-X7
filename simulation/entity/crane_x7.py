@@ -311,9 +311,9 @@ if __name__ == "__main__":
         ),
         show_viewer=True,
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(3.5, 0.0, 2.5),
-            camera_lookat=(0.0, 0.0, 0.5),
-            camera_fov=35,
+                camera_pos=(1.0, 1.0, 0.10),
+                camera_lookat=(0.100, 0.0, 0.10),
+                camera_fov=30,
         ),
         vis_options=gs.options.VisOptions(
             show_world_frame=True,

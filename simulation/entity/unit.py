@@ -71,7 +71,7 @@ class Unit(object):
             self.crane_x7.table_z + 0.03 * 0.5 + 1e-3,
         )
 
-        self.cube = Cube(scene=self.scene, center=self.cube_center, size=0.04, fixed=False)
+        self.cube = Cube(scene=self.scene, center=self.cube_center, fixed=False)
         self.cube_half = self.cube.size * 0.5
 
     def create(self, enable_render_camera: bool = False):
@@ -143,9 +143,9 @@ if __name__ == "__main__":
         ),
         show_viewer=True,
         viewer_options=gs.options.ViewerOptions(
-            camera_pos=(2.0, 1.5, 1.1),
-            camera_lookat=(0.0, 0.0, 0.5),
-            camera_fov=35,
+            camera_pos=(1.0, 1.0, 0.10),
+            camera_lookat=(0.100, 0.0, 0.10),
+            camera_fov=30,
         ),
         vis_options=gs.options.VisOptions(
             show_world_frame=False,
