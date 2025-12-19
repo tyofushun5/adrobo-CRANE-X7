@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from pathlib import Path
+import os
 from typing import Dict
 
 import numpy as np
@@ -22,6 +20,7 @@ from dreamer_v2 import (
     calculate_lambda_target,
     preprocess_obs,
 )
+
 from dreamer_v2.distributions import MSE
 from dreamer_v2.tools.set_seed import set_seed
 from simulation.envs.custom_env import Environment
@@ -29,7 +28,6 @@ from simulation.reward import transform_reward
 
 
 def to_hwc_image(frame) -> np.ndarray:
-    """Convert various camera outputs into HWC RGB."""
     frame = np.asarray(frame)
     if frame.ndim == 4:
         frame = frame[0]
@@ -41,7 +39,6 @@ def to_hwc_image(frame) -> np.ndarray:
 
 
 def prepare_image(frame, target_size: int) -> np.ndarray:
-    """Ensure uint8 HWC image resized to target_size."""
     image = to_hwc_image(frame)
     image = np.ascontiguousarray(image)
     if image.dtype != np.uint8:
@@ -164,14 +161,17 @@ def train(cfg: Config):
     policy = Agent(encoder, decoder, rssm, actor)
     policy.to(device)
     policy.reset()
-    checkpoint_base = Path(cfg.save_path)
-    checkpoint_base.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_base = str(cfg.save_path)
+    checkpoint_dir = os.path.dirname(checkpoint_base)
+    if checkpoint_dir:
+        os.makedirs(checkpoint_dir, exist_ok=True)
 
     def save_checkpoint(suffix: str | None = None):
         target_path = checkpoint_base
         if suffix:
-            target_path = checkpoint_base.with_name(f"{checkpoint_base.stem}_{suffix}{checkpoint_base.suffix}")
-        torch.save(policy.to("cpu"), str(target_path))
+            stem, ext = os.path.splitext(checkpoint_base)
+            target_path = f"{stem}_{suffix}{ext}"
+        torch.save(policy.to("cpu"), target_path)
         policy.to(device)
 
     img_h, img_w = image_shape[0], image_shape[1]
@@ -422,16 +422,11 @@ def train(cfg: Config):
 
 def main():
     cfg = build_config()
-    save_path = Path(cfg.save_path)
-    if save_path.parent and not save_path.parent.exists():
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-
-    print("Launching DreamerV2 with config:")
-    for key, value in cfg.__dict__.items():
-        print(f"  {key}: {value}")
-
+    save_path = str(cfg.save_path)
+    save_dir = os.path.dirname(save_path)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
     train(cfg)
-
 
 if __name__ == "__main__":
     main()
