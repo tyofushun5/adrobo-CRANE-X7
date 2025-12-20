@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class Config:
     buffer_size: int = 100_000
-    batch_size: int = 16 #32
+    batch_size: int = 8 #32
     seq_length: int = 50
     imagination_horizon: int = 15
 

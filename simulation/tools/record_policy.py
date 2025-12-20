@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fps", type=int, default=60)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--show_viewer", action="store_true")
+    parser.add_argument("--deterministic", action="store_true", help="確率的方策ではなく決定的に行動を選択します。")
     parser.add_argument(
         "--checkpoint",
         type=str,
@@ -30,7 +31,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: bool, checkpoint: str) -> None:
+def record_episode(
+    output: str,
+    steps: int,
+    fps: int,
+    device: str,
+    show_viewer: bool,
+    checkpoint: str,
+    deterministic: bool,
+) -> None:
     env = Environment(
         num_envs=1,
         max_steps=steps,
@@ -46,7 +55,7 @@ def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: 
     if not ckpt_path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
-    # Explicitly allow loading Agent objects and disable weights-only mode (PyTorch 2.6+ default).
+
     add_safe_globals([Agent])
     policy = torch.load(str(ckpt_path), map_location=device, weights_only=False)
     if policy is None:
@@ -59,8 +68,19 @@ def record_episode(output: str, steps: int, fps: int, device: str, show_viewer: 
     obs = capture_observation(env, cfg.image_size)
 
     for _ in range(steps):
-        action, _ = policy(obs)
-        _, reward, terminated, truncated, info = env.step(action[None, :])
+        action, _ = policy(obs, eval=deterministic)
+        action_np = np.asarray(action).squeeze()
+        if action_np.ndim == 0:
+            action_index = int(action_np)
+        elif action_np.ndim == 1 and action_np.size == env.action_space.n:
+            action_index = int(np.argmax(action_np))
+        elif action_np.ndim == 1 and action_np.size == 1:
+            action_index = int(action_np[0])
+        else:
+            raise ValueError(
+                f"Unexpected action shape {action_np.shape} for Discrete({env.action_space.n})"
+            )
+        _, reward, terminated, truncated, info = env.step(action_index)
         obs = capture_observation(env, cfg.image_size)
         if bool(terminated[0]) or bool(truncated[0]):
             break
@@ -80,6 +100,7 @@ def main():
         device=args.device,
         show_viewer=args.show_viewer,
         checkpoint=args.checkpoint,
+        deterministic=args.deterministic,
     )
 
 
