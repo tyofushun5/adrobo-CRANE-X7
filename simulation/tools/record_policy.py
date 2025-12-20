@@ -7,6 +7,7 @@ from torch.serialization import add_safe_globals
 
 from dreamer_v2.config import Config
 from dreamer_v2.agent import Agent
+from dreamer_v2.utils import preprocess_obs
 from simulation.envs.custom_env import Environment
 from simulation.train.train import capture_observation
 
@@ -14,7 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent.pth"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args():
     parser = argparse.ArgumentParser(description="Genesis 環境で CRANE-X7 のロールアウトを動画保存します。")
     parser.add_argument("--output", type=str, default="videos/preview.mp4")
     parser.add_argument("--steps", type=int, default=1000)
@@ -29,6 +30,31 @@ def parse_args() -> argparse.Namespace:
         help="読み込むポリシーのパス。デフォルトは学習スクリプトのsave_pathと同じファイル。",
     )
     return parser.parse_args()
+
+def save_video(frames: list[np.ndarray], output: str, fps: int) -> None:
+    try:
+        import imageio.v2 as imageio
+    except Exception as exc:
+        raise RuntimeError("imageio is required to write imagined videos.") from exc
+    writer = imageio.get_writer(output, fps=fps, quality=8)
+    try:
+        for frame in frames:
+            writer.append_data(frame)
+    finally:
+        writer.close()
+
+
+def decode_frame(mean_tensor: torch.Tensor) -> np.ndarray:
+    frame = mean_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    frame = (frame + 0.5).clip(0.0, 1.0)
+    return (frame * 255.0).astype(np.uint8)
+
+
+def imagined_output_path(output: str) -> str:
+    path = Path(output)
+    if path.suffix:
+        return str(path.with_name(f"{path.stem}_imagined{path.suffix}"))
+    return str(path.with_name(f"{path.name}_imagined"))
 
 
 def record_episode(
@@ -67,6 +93,28 @@ def record_episode(
     cfg = Config()
     obs = capture_observation(env, cfg.image_size)
 
+    obs_proc = preprocess_obs(obs)
+    image = torch.as_tensor(obs_proc["image"], device=policy.device)
+    image = image.transpose(1, 2).transpose(0, 1).unsqueeze(0)
+    joint = torch.as_tensor(obs_proc["joint_pos"], device=policy.device).unsqueeze(0)
+    with torch.no_grad():
+        rnn_hidden = torch.zeros(1, policy.rssm.rnn_hidden_dim, device=policy.device)
+        embedded = policy.encoder(image, joint)
+        posterior = policy.rssm.get_posterior(rnn_hidden, embedded)
+        state = posterior.sample().flatten(1)
+
+        imagined_frames: list[np.ndarray] = []
+        obs_dist = policy.decoder(state, rnn_hidden)
+        imagined_frames.append(decode_frame(obs_dist.mean))
+
+        for _ in range(steps - 1):
+            action, _, _ = policy.action_model(state, rnn_hidden, eval=deterministic)
+            rnn_hidden = policy.rssm.recurrent(state, action, rnn_hidden)
+            prior = policy.rssm.get_prior(rnn_hidden)
+            state = prior.sample().flatten(1)
+            obs_dist = policy.decoder(state, rnn_hidden)
+            imagined_frames.append(decode_frame(obs_dist.mean))
+
     for _ in range(steps):
         action, _ = policy(obs, eval=deterministic)
         action_np = np.asarray(action).squeeze()
@@ -86,7 +134,9 @@ def record_episode(
             break
 
     env.close()
+    save_video(imagined_frames, imagined_output_path(output), fps)
     print(f"Saved video to: {output}")
+    print(f"Saved imagined video to: {imagined_output_path(output)}")
 
 
 def main():

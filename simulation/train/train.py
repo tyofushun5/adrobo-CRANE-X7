@@ -216,6 +216,11 @@ def train(cfg: Config):
         states = torch.zeros(cfg.seq_length, cfg.batch_size, cfg.state_dim * cfg.num_classes, device=device)
         rnn_hiddens = torch.zeros(cfg.seq_length, cfg.batch_size, cfg.rnn_hidden_dim, device=device)
         kl_loss = 0
+
+        initial_posterior = rssm.get_posterior(rnn_hidden, emb_observations[0])
+        state = initial_posterior.rsample().flatten(1)
+        states[0] = state
+        rnn_hiddens[0] = rnn_hidden
         for i in range(cfg.seq_length - 1):
             rnn_hidden = rssm.recurrent(state, actions[i], rnn_hidden)
             prior, detach_prior = rssm.get_prior(rnn_hidden, detach=True)
@@ -228,8 +233,6 @@ def train(cfg: Config):
             ) * torch.mean(kl_divergence(posterior, detach_prior))
 
         kl_loss /= (cfg.seq_length - 1)
-        rnn_hiddens = rnn_hiddens[1:]
-        states = states[1:]
 
         flatten_rnn_hiddens = rnn_hiddens.view(-1, cfg.rnn_hidden_dim)
         flatten_states = states.view(-1, cfg.state_dim * cfg.num_classes)
@@ -237,8 +240,8 @@ def train(cfg: Config):
         reward_dist = reward_model(flatten_states, flatten_rnn_hiddens)
 
         C, H, W = obs_images.shape[2:]
-        obs_loss = -torch.mean(obs_dist.log_prob(obs_images[1:].reshape(-1, C, H, W)))
-        reward_loss = -torch.mean(reward_dist.log_prob(rewards[:-1].reshape(-1, 1)))
+        obs_loss = -torch.mean(obs_dist.log_prob(obs_images.reshape(-1, C, H, W)))
+        reward_loss = -torch.mean(reward_dist.log_prob(rewards.reshape(-1, 1)))
         wm_loss = obs_loss + cfg.reward_loss_scale * reward_loss + cfg.kl_scale * kl_loss
 
         wm_optimizer.zero_grad()
@@ -301,6 +304,11 @@ def train(cfg: Config):
             states = torch.zeros(cfg.seq_length, cfg.batch_size, cfg.state_dim * cfg.num_classes, device=device)
             rnn_hiddens = torch.zeros(cfg.seq_length, cfg.batch_size, cfg.rnn_hidden_dim, device=device)
             kl_loss = 0
+
+            initial_posterior = rssm.get_posterior(rnn_hidden, emb_observations[0])
+            state = initial_posterior.rsample().flatten(1)
+            states[0] = state
+            rnn_hiddens[0] = rnn_hidden
             for i in range(cfg.seq_length - 1):
                 rnn_hidden = rssm.recurrent(state, actions[i], rnn_hidden)
                 prior, detach_prior = rssm.get_prior(rnn_hidden, detach=True)
@@ -313,16 +321,14 @@ def train(cfg: Config):
                 ) * torch.mean(kl_divergence(posterior, detach_prior))
             kl_loss /= (cfg.seq_length - 1)
 
-            rnn_hiddens = rnn_hiddens[1:]
-            states = states[1:]
             flatten_rnn_hiddens = rnn_hiddens.view(-1, cfg.rnn_hidden_dim)
             flatten_states = states.view(-1, cfg.state_dim * cfg.num_classes)
 
             obs_dist = decoder(flatten_states, flatten_rnn_hiddens)
             reward_dist = reward_model(flatten_states, flatten_rnn_hiddens)
             C, H, W = obs_images.shape[2:]
-            obs_loss = -torch.mean(obs_dist.log_prob(obs_images[1:].reshape(-1, C, H, W)))
-            reward_loss = -torch.mean(reward_dist.log_prob(rewards[:-1].reshape(-1, 1)))
+            obs_loss = -torch.mean(obs_dist.log_prob(obs_images.reshape(-1, C, H, W)))
+            reward_loss = -torch.mean(reward_dist.log_prob(rewards.reshape(-1, 1)))
             wm_loss = obs_loss + cfg.reward_loss_scale * reward_loss + cfg.kl_scale * kl_loss
 
             wm_optimizer.zero_grad()
@@ -333,6 +339,7 @@ def train(cfg: Config):
             flatten_rnn_hiddens = flatten_rnn_hiddens.detach()
             flatten_states = flatten_states.detach()
 
+            imagined_batch = flatten_states.shape[0]
             imagined_states = torch.zeros(
                 cfg.imagination_horizon + 1, *flatten_states.shape, device=device
             )
@@ -340,10 +347,10 @@ def train(cfg: Config):
                 cfg.imagination_horizon + 1, *flatten_rnn_hiddens.shape, device=device
             )
             imagined_action_log_probs = torch.zeros(
-                cfg.imagination_horizon, cfg.batch_size * (cfg.seq_length - 1), device=device
+                cfg.imagination_horizon, imagined_batch, device=device
             )
             imagined_action_entropys = torch.zeros(
-                cfg.imagination_horizon, cfg.batch_size * (cfg.seq_length - 1), device=device
+                cfg.imagination_horizon, imagined_batch, device=device
             )
 
             imagined_states[0] = flatten_states
@@ -374,7 +381,7 @@ def train(cfg: Config):
                 .detach()
             )
             discount_arr = (cfg.discount * torch.ones_like(imagined_rewards)).to(device)
-            initial_done = done_flags[1:].reshape(1, -1)
+            initial_done = done_flags.reshape(1, -1)
             discount_arr[0] = cfg.discount * initial_done
 
             lambda_target = calculate_lambda_target(imagined_rewards, discount_arr, target_values, cfg.lambda_)
