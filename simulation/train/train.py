@@ -59,6 +59,21 @@ def capture_observation(env: Environment, image_size: int) -> Dict[str, np.ndarr
     return {"image": image, "joint_pos": joint}
 
 
+def action_to_one_hot(action, action_dim: int) -> np.ndarray:
+    action = np.asarray(action)
+    if action.ndim == 0:
+        one_hot = np.zeros(action_dim, dtype=np.float32)
+        one_hot[int(action)] = 1.0
+        return one_hot
+    if action.ndim == 1 and action.shape[0] == action_dim:
+        return action.astype(np.float32)
+    if action.ndim == 1:
+        one_hot = np.zeros((action.shape[0], action_dim), dtype=np.float32)
+        one_hot[np.arange(action.shape[0]), action.astype(np.int64)] = 1.0
+        return one_hot
+    raise ValueError("Unsupported action shape for one-hot conversion")
+
+
 def make_env(cfg) -> Environment:
     return Environment(
         num_envs=1,
@@ -89,7 +104,8 @@ def evaluation(eval_env: Environment, policy: Agent, cfg) -> float:
             episode_return = 0.0
             while not done and not truncated:
                 action, _ = policy(obs)
-                _, reward, terminated, truncated_arr, _ = eval_env.step(action)
+                action_index = int(np.argmax(action))
+                _, reward, terminated, truncated_arr, _ = eval_env.step(action_index)
                 done = bool(terminated[0])
                 truncated = bool(truncated_arr[0])
                 episode_return += float(reward[0])
@@ -119,7 +135,7 @@ def train(cfg: Config):
     obs = capture_observation(env, cfg.image_size)
     image_shape = obs["image"].shape
     joint_dim = obs["joint_pos"].shape[0]
-    action_dim = env.action_space.shape[0]
+    action_dim = env.action_space.n
 
     replay_buffer = ReplayBuffer(cfg.buffer_size, image_shape, joint_dim, action_dim)
 
@@ -155,7 +171,8 @@ def train(cfg: Config):
         _, reward, terminated, truncated_arr, _ = env.step(action)
         done = bool(terminated[0])
         truncated = bool(truncated_arr[0])
-        replay_buffer.push(preprocess_obs(obs), action, transform_reward(reward[0]), done or truncated)
+        one_hot_action = action_to_one_hot(action, action_dim)
+        replay_buffer.push(preprocess_obs(obs), one_hot_action, transform_reward(reward[0]), done or truncated)
         obs = capture_observation(env, cfg.image_size)
 
     policy = Agent(encoder, decoder, rssm, actor)
@@ -248,7 +265,8 @@ def train(cfg: Config):
     for iteration in range(cfg.iter):
         with torch.no_grad():
             action, _ = policy(obs, eval=False)
-            _, reward, terminated, truncated_arr, _ = env.step(action)
+            action_index = int(np.argmax(action))
+            _, reward, terminated, truncated_arr, _ = env.step(action_index)
             done = bool(terminated[0])
             truncated = bool(truncated_arr[0])
             transformed_reward = transform_reward(reward[0])

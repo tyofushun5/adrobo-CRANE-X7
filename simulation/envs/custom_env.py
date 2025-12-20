@@ -94,7 +94,6 @@ class Environment(gym.Env):
             is_table=self.is_table,
         )
 
-        # Instantiate robot, cameras, cube in the scene.
         self.unit.create(enable_render_camera=self.record)
 
         self.crane_x7 = self.unit.crane_x7
@@ -119,7 +118,8 @@ class Environment(gym.Env):
         obs_low = np.concatenate([workspace_min, workspace_min]).astype(np.float32)
         obs_high = np.concatenate([workspace_max, workspace_max]).astype(np.float32)
 
-        self.single_action_space = spaces.Box(low=-1.0, high=1.0, shape=(4,), dtype=np.float32)
+        self.action_dim = 8
+        self.single_action_space = spaces.Discrete(self.action_dim)
         self.single_observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
         self.action_space = self.single_action_space
@@ -245,47 +245,16 @@ class Environment(gym.Env):
         self._set_cube_pose(cube_centers, env_ids)
         self.step_count[env_ids] = 0
 
-    def _apply_action(self, action: torch.Tensor) -> None:
-        if action.ndim == 1:
-            action = action.unsqueeze(0)
-        action = action[: self.num_envs]
-
-        delta = torch.zeros((action.shape[0], 3), device=self.device, dtype=torch.float32)
-        if self.control_mode == "delta_xy":
-            delta[:, :2] = torch.clamp(action[:, :2], -1.0, 1.0)
+    def _apply_action(self, action) -> None:
+        action = np.asarray(action)
+        if action.ndim == 2 and action.shape[1] == self.action_dim:
+            action = action.argmax(axis=1)
+        elif action.ndim == 1 and action.shape[0] == self.action_dim and self.num_envs == 1:
+            action = np.array([int(action.argmax())], dtype=np.int64)
         else:
-            delta[:, :3] = torch.clamp(action[:, :3], -1.0, 1.0)
-
-        grip_cmd = action[:, -1]
-        open_mask = grip_cmd > 0
-
-        delta_np = delta.cpu().numpy() * self.max_delta
-
-        base_pos = np.zeros(3, dtype=np.float64)
-        base_quat = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float64)
-        ws_min = self.workspace.workspace_min + self.workspace.workspace_margin
-        ws_max = self.workspace.workspace_max - self.workspace.workspace_margin
-
-        targets_world = []
-        for env_idx, d in enumerate(delta_np):
-            current = self.ee_cache[env_idx].cpu().numpy()
-            target = current + d
-            target = np.clip(target, ws_min, ws_max)
-            self.ee_cache[env_idx] = torch.as_tensor(target, device=self.device, dtype=torch.float32)
-            target_world = base_pos + self.crane_x7.rotate_vec(base_quat, target)
-            targets_world.append(target_world)
-
-        targets_world = np.asarray(targets_world, dtype=np.float64)
-        self.crane_x7.ik(targets_world, envs_idx=self.env_ids.cpu().numpy(), target_quat=self.crane_x7.default_ee_quat)
-
-        if open_mask.any():
-            target = np.tile(np.array([[1.57, 1.57]], dtype=np.float64), (open_mask.sum().item(), 1))
-            self.crane_x7.crane_x7.control_dofs_position(target, self.crane_x7.gripper_joint_dofs_idx, np.nonzero(open_mask.cpu())[0])
-            self.crane_x7.is_open_gripper = True
-        if (~open_mask).any():
-            target = np.tile(np.array([[-0.0873, -0.0873]], dtype=np.float64), ((~open_mask).sum().item(), 1))
-            self.crane_x7.crane_x7.control_dofs_position(target, self.crane_x7.gripper_joint_dofs_idx, np.nonzero((~open_mask).cpu())[0])
-            self.crane_x7.is_open_gripper = False
+            action = action.astype(np.int64).reshape(-1)
+        env_ids = self.env_ids.cpu().numpy()
+        self.crane_x7.action(action, envs_idx=env_ids)
 
     def step(self, action):
         infos = [{} for _ in range(self.num_envs)]
