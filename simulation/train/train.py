@@ -74,13 +74,15 @@ def action_to_one_hot(action, action_dim: int) -> np.ndarray:
     raise ValueError("Unsupported action shape for one-hot conversion")
 
 
-def make_env(cfg) -> Environment:
+def make_env(cfg, *, show_viewer: bool | None = None) -> Environment:
+    if show_viewer is None:
+        show_viewer = cfg.show_viewer
     return Environment(
         num_envs=1,
         max_steps=cfg.env_max_steps,
         control_mode=cfg.control_mode,
         device=cfg.sim_device,
-        show_viewer=cfg.show_viewer,
+        show_viewer=show_viewer,
         record=cfg.record,
         video_path=cfg.video_path,
         fps=cfg.fps,
@@ -129,8 +131,8 @@ def train(cfg: Config):
 
     set_seed(cfg.seed)
 
-    env = make_env(cfg)
-    eval_env = make_env(cfg)
+    env = make_env(cfg, show_viewer=cfg.show_viewer)
+    eval_env = make_env(cfg, show_viewer=False)
 
     obs = capture_observation(env, cfg.image_size)
     image_shape = obs["image"].shape
