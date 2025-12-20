@@ -37,13 +37,12 @@ class Cube(Entity):
         self.cube = None
 
     def create(self):
-        half = self.size / 2.0
-        lower = tuple(self.center - half)
-        upper = tuple(self.center + half)
-
+        half = self.size * 0.5
+        origin = self.center - half
         morph = gs.morphs.Box(
-            lower=lower,
-            upper=upper,
+            size=(self.size, self.size, self.size),
+            pos=tuple(origin),
+            quat=tuple(self.quat),
             visualization=True,
             collision=True,
             fixed=self.fixed,
@@ -64,15 +63,16 @@ class Cube(Entity):
         if quat is not None:
             self.quat = np.array(quat, dtype=np.float64)
         if self.cube is not None:
+            half = self.size * 0.5
             if self.center.ndim == 2 and envs_idx is not None:
                 envs_idx = np.r_[envs_idx]
                 for idx, env_id in enumerate(envs_idx):
-                    pos = self.center[idx]
+                    pos = self.center[idx] - half
                     self.cube.set_pos(pos=pos, envs_idx=env_id)
                     if hasattr(self.cube, "set_quat"):
                         self.cube.set_quat(quat=self.quat, envs_idx=env_id)
             else:
-                self.cube.set_pos(pos=self.center, envs_idx=envs_idx)
+                self.cube.set_pos(pos=self.center - half, envs_idx=envs_idx)
                 if hasattr(self.cube, "set_quat"):
                     self.cube.set_quat(quat=self.quat, envs_idx=envs_idx)
 

@@ -19,7 +19,7 @@ class Environment(gym.Env):
         device="cpu",
         show_viewer=False,
         record=False,
-        is_table=False,
+        is_table=True,
         is_workspace=False,
         video_path="videos/preview.mp4",
         fps=60,
@@ -90,6 +90,8 @@ class Environment(gym.Env):
             record_cam_pos=self.record_cam_pos,
             record_cam_lookat=self.record_cam_lookat,
             record_cam_fov=self.record_cam_fov,
+            is_workspace=self.is_workspace,
+            is_table=self.is_table,
         )
 
         # Instantiate robot, cameras, cube in the scene.

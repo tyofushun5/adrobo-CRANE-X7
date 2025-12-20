@@ -68,7 +68,7 @@ class Unit(object):
         self.cube_center = (
             self.workspace.workspace_min[0],
             self.workspace.workspace_min[1],
-            self.crane_x7.table_z + 0.03 * 0.5 + 1e-3,
+            self.crane_x7.table_z + 0.03 * 0.5,
         )
 
         self.cube = Cube(scene=self.scene, center=self.cube_center, fixed=False)
@@ -103,11 +103,11 @@ class Unit(object):
         high = self.workspace.workspace_max - self.workspace.workspace_margin
         if self.num_envs == 1:
             xy = low[:2] + np.random.rand(2) * (high[:2] - low[:2])
-            z = self.crane_x7.table_z + self.cube_half + 1e-3
+            z = self.crane_x7.table_z + self.cube_half
             center = np.array([xy[0], xy[1], z], dtype=np.float64)
         else:
             xy = low[:2] + np.random.rand(self.num_envs, 2) * (high[:2] - low[:2])
-            z = np.full((self.num_envs, 1), self.crane_x7.table_z + self.cube_half + 1e-3, dtype=np.float64)
+            z = np.full((self.num_envs, 1), self.crane_x7.table_z + self.cube_half, dtype=np.float64)
             center = np.concatenate([xy, z], axis=1)
         self.cube.reset(center=center, envs_idx=np.arange(self.num_envs))
 
@@ -177,7 +177,6 @@ if __name__ == "__main__":
     scene.build(n_envs=num_envs, env_spacing=(2.0, 3.0))
 
     unit.reset()
-
     num_steps = 10000
     rng = np.random.default_rng(0)
     for _ in range(num_steps):

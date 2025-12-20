@@ -11,14 +11,14 @@ from simulation.envs.custom_env import Environment
 from simulation.train.train import capture_observation
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent_iter1000.pth"
+CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent.pth"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Genesis 環境で CRANE-X7 のロールアウトを動画保存します。")
     parser.add_argument("--output", type=str, default="videos/preview.mp4")
     parser.add_argument("--steps", type=int, default=1000)
-    parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument("--fps", type=int, default=60)
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--show_viewer", action="store_true")
     parser.add_argument(
