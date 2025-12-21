@@ -39,9 +39,9 @@ class Config:
     image_size: int = 64
     seed: int = 1
     device: str = "cuda"
-    save_path: str = "dreamer_agent.pth"
+    save_path: str = "model/dreamer_agent.pth"
     checkpoint_freq: int = 1000 #5000
-    log_dir: str = "runs/sim_dreamer"
+    log_dir: str = "tensorboard"
 
     env_max_steps: int = 300
     control_mode: str = "discrete_xyz"

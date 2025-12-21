@@ -43,7 +43,13 @@ python simulation/train/train.py
 - `control_mode` : 操作モード（現状は `discrete_xyz`）
 - `show_viewer` : Genesis ビューアを表示
 - `record` / `video_path` : 学習中のカメラ映像を保存
+- `log_dir` : TensorBoard のログ出力先
 - `save_path` : チェックポイント保存先（`record_policy.py` の `--checkpoint` と合わせてください）
+
+TensorBoard のログを見る:
+```bash
+tensorboard --logdir simulation/train/tensorborad
+```
 
 ## リポジトリ構成
 **ディレクトリ**
