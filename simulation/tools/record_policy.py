@@ -1,4 +1,3 @@
-import argparse
 from pathlib import Path
 
 import numpy as np
@@ -13,23 +12,14 @@ from simulation.train.train import capture_observation
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent.pth"
+DEFAULT_OUTPUT = "videos/preview.mp4"
+DEFAULT_STEPS = 200
+DEFAULT_FPS = 60
+DEFAULT_DEVICE = "cpu"
+DEFAULT_SHOW_VIEWER = False
+DEFAULT_DETERMINISTIC = False
+DEFAULT_CHECKPOINT = str(CHECKPOINT_PATH.with_name("dreamer_agent.pth"))
 
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Genesis 環境で CRANE-X7 のロールアウトを動画保存します。")
-    parser.add_argument("--output", type=str, default="videos/preview.mp4")
-    parser.add_argument("--steps", type=int, default=1000)
-    parser.add_argument("--fps", type=int, default=60)
-    parser.add_argument("--device", type=str, default="cpu")
-    parser.add_argument("--show_viewer", action="store_true")
-    parser.add_argument("--deterministic", action="store_true", help="確率的方策ではなく決定的に行動を選択します。")
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        default=str(CHECKPOINT_PATH.with_name("dreamer_agent.pth")),
-        help="読み込むポリシーのパス。デフォルトは学習スクリプトのsave_pathと同じファイル。",
-    )
-    return parser.parse_args()
 
 def save_video(frames: list[np.ndarray], output: str, fps: int) -> None:
     try:
@@ -141,17 +131,16 @@ def record_episode(
 
 
 def main():
-    args = parse_args()
-    output_path = Path(args.output)
+    output_path = Path(DEFAULT_OUTPUT)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     record_episode(
         str(output_path),
-        steps=args.steps,
-        fps=args.fps,
-        device=args.device,
-        show_viewer=args.show_viewer,
-        checkpoint=args.checkpoint,
-        deterministic=args.deterministic,
+        steps=DEFAULT_STEPS,
+        fps=DEFAULT_FPS,
+        device=DEFAULT_DEVICE,
+        show_viewer=DEFAULT_SHOW_VIEWER,
+        checkpoint=DEFAULT_CHECKPOINT,
+        deterministic=DEFAULT_DETERMINISTIC,
     )
 
 

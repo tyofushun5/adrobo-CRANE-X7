@@ -1,58 +1,67 @@
 # adrobo-CRANE-X7
 
-CRANE-X7 マニピュレータを ManiSkill3/Genesis 上で動かし、DreamerV2 で学習するための実験リポジトリです。CRANE-X7 の公式 URDF/メッシュ、Genesis ベースの軽量環境、DreamerV2 実装を含みます。
+## 概要
+CRANE-X7 を Genesis 上で動作させ、DreamerV2 で学習させるための実験リポジトリです。CRANE-X7 の公式 URDF とメッシュ、Genesis ベースの環境、DreamerV2 の実装を含みます。
 
-## リポジトリ構成
-- `ManiSkill/` — [haosulab/ManiSkill](https://github.com/haosulab/ManiSkill) のサブモジュール。Genesis を含む依存関係のセットアップ手順もこちらを参照。
-- `crane_x7_description/` — 株式会社アールティ提供の CRANE-X7 記述（非商用ライセンス）。詳細は「ライセンス」セクションを参照。
-- `simulation/` — Genesis 環境とツール類。
-  - `envs/custom_env.py` — CRANE-X7 用の軽量 Genesis 環境。
-  - `train/train.py` — DreamerV2 での学習エントリポイント。
-  - `tools/record_policy.py` — ランダムポリシーのロールアウトを動画保存するユーティリティ。
-- `dreamer_v2/` — 本リポジトリ用に調整した DreamerV2 実装。東京大学weblab（松尾・岩澤研究室, Matsuo Lab）の「世界モデル」講座 第1回コンペ（状態空間モデル (1), https://weblab.t.u-tokyo.ac.jp/lecture/course-list/world-model/ ／世界モデル - 東京大学松尾・岩澤研究室（松尾研）- Matsuo Lab）を参考にし、運営許可を得た上で利用しています。
-- `docker/` — GPU 前提のベースイメージ (`docker/Dockerfile`)。
-- `daydreamer-main/`, `dreamerv2-main/` — 参考実装のスナップショット。
+## 動作環境
+- Ubuntu : 22.04 LTS / 24.04 LTS
+- CUDA : 13.0
+- Python : 3.10 系
+- 依存ライブラリ: `requirements.txt` を参照
 
 ## セットアップ
 1. リポジトリ取得
    ```bash
-   git clone https://github.com/<your-account>/adrobo-CRANE-X7.git
+   git clone https://github.com/tyofushun5/adrobo-CRANE-X7.git
    cd adrobo-CRANE-X7
    git submodule update --init --recursive
    ```
-2. 実行環境を用意  
-   - 推奨: 付属の Dockerfile を使う  
-     ```bash
-     docker build -t adrobo-crane-x7 -f docker/Dockerfile .
-     docker run --gpus all -it --rm -v $PWD:/workspace adrobo-crane-x7
-     ```  
-   - ローカル構築の場合は Python 3.9 相当を用意し、`mani-skill==3.0.0b21`（Dockerfileと同版）、`torch`、`genesis` などを ManiSkill の README に従ってインストールしてください。
-3. 必要に応じてシーン資産をダウンロード  
+2. 依存パッケージのインストール
    ```bash
-   python -m mani_skill.utils.download_asset --list "scene"
-   python -m mani_skill.utils.download_asset ReplicaCAD
+   python -m pip install -r requirements.txt
    ```
-4. 動作確認  
-   ランダムポリシーを 1 エピソード実行し動画保存します。  
-   ```bash
-   python simulation/tools/record_policy.py --output videos/preview.mp4 --device cpu --steps 200
-   ```
+   ※ `requirements.txt` は参考です。環境に合わせて適宜調整してください。
 
-## 学習の始め方
-- DreamerV2 のデフォルト設定は `dreamer_v2/config.py` を参照。
-- CRANE-X7 環境で学習を回す例:
-  ```bash
-  python simulation/train/train.py --iter 1000 --device cuda --image_size 64 --save_path runs/dreamer_agent.pth
-  ```
-  主なオプション:
-  - `--control_mode` : `delta_xy`（水平） / `delta_xyz`（3D 移動）
-  - `--show_viewer` : Genesis ビューアを表示
-  - `--record` / `--video_path` : 学習中のカメラ映像を保存
+## 使用方法
+### 学習済みポリシーの動画保存
+学習済みポリシーで環境を 1 エピソード実行し、環境側の録画機能で動画を保存します（デフォルトは `simulation/train/dreamer_agent.pth`）。  
+同時に、初期観測から RSSM の潜在状態をロールアウトし、デコーダで生成した想像映像を別ファイルに保存します。  
+出力ファイルは `videos/preview.mp4` と `videos/preview_imagined.mp4` です。
+```bash
+python simulation/tools/record_policy.py
+```
+設定を変えたい場合は `simulation/tools/record_policy.py` の `DEFAULT_*` を編集してください。
 
-## crane_x7_description のライセンスと再配布
-- `crane_x7_description/` は株式会社アールティの「非商用使用許諾規約」に基づくデータを含みます。利用前に `crane_x7_description/LICENSE` を必ず確認してください。商用利用が必要な場合は株式会社アールティへお問い合わせください。
-- 再配布する場合はオリジナルリポジトリ（https://github.com/rt-net/crane_x7_description）へのクレジットと付属ライセンス文書を同梱してください。
-- URDF やメッシュを変更・追加した場合は、変更点を README やコミットメッセージに明記してください。
+### 学習
+DreamerV2 のデフォルト設定は `dreamerv2/config.py` を参照してください。
+```bash
+python simulation/train/train.py
+```
+主に調整する設定（`dreamerv2/config.py`）:
+- `iter` : 学習イテレーション数
+- `device` / `sim_device` : 学習側 / シミュレーション側のデバイス
+- `control_mode` : 操作モード（現状は `discrete_xyz`）
+- `show_viewer` : Genesis ビューアを表示
+- `record` / `video_path` : 学習中のカメラ映像を保存
+- `save_path` : チェックポイント保存先（`record_policy.py` の `--checkpoint` と合わせてください）
 
-## コントリビュート
-Issue や Pull Request を歓迎します。大きな変更や仕様検討は事前に Issue でディスカッションしてください。
+## リポジトリ構成
+**ディレクトリ**
+- `ManiSkill/` — テーブルアセット参照用のサブモジュール（`simulation/entity/table.py`）。
+- `crane_x7_description/` — 株式会社アールティ提供の CRANE-X7 の記述パッケージ（非商用ライセンス）。詳細は「ライセンス・利用条件」セクションを参照。
+- `simulation/` — Genesis 環境と学習用ツール。
+- `dreamerv2/` — 本リポジトリ向けに調整した DreamerV2 の実装。
+
+**主要スクリプト**
+- `simulation/envs/custom_env.py` — CRANE-X7 用の Genesis 環境。
+- `simulation/train/train.py` — DreamerV2 学習のエントリーポイント。
+- `simulation/tools/record_policy.py` — 学習済みポリシーのロールアウト動画と、RSSM で生成した想像映像を保存するユーティリティ。
+
+## ライセンス・利用条件
+- 本リポジトリ本体は MIT License（`LICENSE`）です。
+- `crane_x7_description/` は株式会社アールティの「非商用使用許諾規約」に基づくデータを含みます。利用前に `crane_x7_description/LICENSE` を必ず確認してください。
+- `dreamerv2/` の実装は、東京大学 松尾・岩澤研究室の「世界モデル Deep Learning 応用講座 2025」第1回コンペ「状態空間モデル (1)」を参考にしており、運営側の許可を得て利用しています。参考: https://weblab.t.u-tokyo.ac.jp/lecture/course-list/world-model/
+
+## 参考文献
+- DreamerV2 の公式実装: https://github.com/danijar/dreamerv2
+- DreamerV2 論文: https://arxiv.org/abs/2010.02193
