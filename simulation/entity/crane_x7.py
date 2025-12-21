@@ -80,10 +80,10 @@ class CraneX7(object):
 
         morph = gs.morphs.URDF(
             file=self.urdf_path,
-            decimate=True,
+            decimate=False,
             decimate_face_num=2000,
             decimate_aggressiveness=5,
-            convexify=True,
+            convexify=False,
             visualization=True,
             collision=True,
             requires_jac_and_IK=True,
@@ -108,18 +108,18 @@ class CraneX7(object):
     def set_gain(self):
 
         self.crane_x7.set_dofs_kp(
-            kp=np.array([800, 800, 600, 600, 400, 400, 400, 50, 50]),
+            kp=np.array([800, 800, 600, 600, 400, 400, 400, 20, 20]),
             dofs_idx_local=self.all_joint_dofs_idx,
         )
 
         self.crane_x7.set_dofs_kv(
-            kv=np.array([80, 80, 60, 60, 40, 40, 40, 5, 5]),
+            kv=np.array([80, 80, 60, 60, 40, 40, 40, 2, 2]),
             dofs_idx_local=self.all_joint_dofs_idx,
         )
 
         self.crane_x7.set_dofs_force_range(
-            lower=np.array([-87, -87, -87, -87, -12, -12, -12, -100, -100]),
-            upper=np.array([87, 87, 87, 87, 12, 12, 12, 100, 100]),
+            lower=np.array([-87, -87, -87, -87, -12, -12, -12, -5, -5]),
+            upper=np.array([87, 87, 87, 87, 12, 12, 12, 5, 5]),
             dofs_idx_local=self.all_joint_dofs_idx,
         )
 

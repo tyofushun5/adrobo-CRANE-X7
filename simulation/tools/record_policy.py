@@ -5,9 +5,9 @@ import numpy as np
 import torch
 from torch.serialization import add_safe_globals
 
-from dreamer_v2.config import Config
-from dreamer_v2.agent import Agent
-from dreamer_v2.utils import preprocess_obs
+from dreamerv2.config import Config
+from dreamerv2.agent import Agent
+from dreamerv2.utils import preprocess_obs
 from simulation.envs.custom_env import Environment
 from simulation.train.train import capture_observation
 

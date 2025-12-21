@@ -135,7 +135,7 @@ if __name__ == "__main__":
             enable_joint_limit=True,
             enable_collision=True,
             constraint_solver=gs.constraint_solver.Newton,
-            iterations=150,
+            iterations=500,
             tolerance=1e-6,
             contact_resolve_time=0.01,
             use_contact_island=False,

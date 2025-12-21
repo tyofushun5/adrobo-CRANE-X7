@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.distributions.kl import kl_divergence
 from torch.nn.utils import clip_grad_norm_
 
-from dreamer_v2 import (
+from dreamerv2 import (
     Agent,
     Actor,
     Config,
@@ -21,8 +21,8 @@ from dreamer_v2 import (
     preprocess_obs,
 )
 
-from dreamer_v2.distributions import MSE
-from dreamer_v2.tools.set_seed import set_seed
+from dreamerv2.distributions import MSE
+from dreamerv2.tools.set_seed import set_seed
 from simulation.envs.custom_env import Environment
 from simulation.reward import transform_reward
 

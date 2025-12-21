@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from dreamer_v2.utils import preprocess_obs
+from dreamerv2.utils import preprocess_obs
 
 
 class Agent(nn.Module):

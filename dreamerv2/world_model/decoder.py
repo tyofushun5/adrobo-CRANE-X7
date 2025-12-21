@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as td
 
-from dreamer_v2.distributions import MSE
+from dreamerv2.distributions import MSE
 
 
 class Decoder(nn.Module):

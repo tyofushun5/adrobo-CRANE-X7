@@ -16,7 +16,7 @@ class Cube(Entity):
         scene=None,
         surface=None,
         center=(0.30, 0.0, 0.05),
-        size=0.03,
+        size=0.02,
         quat=(1.0, 0.0, 0.0, 0.0),
         color=(1.0, 0.9, 0.0),
         fixed=False,
