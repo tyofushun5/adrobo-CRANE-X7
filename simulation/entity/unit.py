@@ -24,7 +24,7 @@ class Unit(object):
         obs_cam_pos=(1.0, 1.0, 0.10),
         obs_cam_lookat=(0.150, 0.0, 0.10),
         obs_cam_fov=30.0,
-        record_cam_res=(1024, 1024),
+        record_cam_res=(2048, 2048),
         record_cam_pos=(1.0, 1.0, 0.10),
         record_cam_lookat=(0.150, 0.0, 0.10),
         record_cam_fov=30.0

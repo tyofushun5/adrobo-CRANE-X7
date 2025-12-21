@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch.distributions.kl import kl_divergence
 from torch.nn.utils import clip_grad_norm_
+from torch.utils.tensorboard import SummaryWriter
 
 from dreamerv2 import (
     Agent,
@@ -131,6 +132,10 @@ def train(cfg: Config):
 
     set_seed(cfg.seed)
 
+    log_dir = str(cfg.log_dir)
+    os.makedirs(log_dir, exist_ok=True)
+    writer = SummaryWriter(log_dir)
+
     env = make_env(cfg, show_viewer=cfg.show_viewer)
     eval_env = make_env(cfg, show_viewer=False)
 
@@ -255,6 +260,10 @@ def train(cfg: Config):
                 f"wm={wm_loss.item():.4f} obs={obs_loss.item():.4f} "
                 f"reward={reward_loss.item():.4f} kl={kl_loss.item():.4f}"
             )
+            writer.add_scalar("pretrain/wm_loss", wm_loss.item(), iteration + 1)
+            writer.add_scalar("pretrain/obs_loss", obs_loss.item(), iteration + 1)
+            writer.add_scalar("pretrain/reward_loss", reward_loss.item(), iteration + 1)
+            writer.add_scalar("pretrain/kl_loss", kl_loss.item(), iteration + 1)
 
     print("Main training loop...")
     env.reset(seed=cfg.seed + 123)
@@ -282,6 +291,7 @@ def train(cfg: Config):
                 episode_returns.append(current_return)
                 if len(episode_returns) > 100:
                     episode_returns.pop(0)
+                writer.add_scalar("train/episode_return", current_return, iteration + 1)
                 current_return = 0.0
                 policy.reset()
 
@@ -431,9 +441,19 @@ def train(cfg: Config):
                 f"entropy={last_entropy:.4f} return@10={recent_return:.2f} "
                 f"buffer={len(replay_buffer)}/{cfg.buffer_size}"
             )
+            writer.add_scalar("train/wm_loss", last_wm_metrics["wm"], iteration + 1)
+            writer.add_scalar("train/obs_loss", last_wm_metrics["obs"], iteration + 1)
+            writer.add_scalar("train/reward_loss", last_wm_metrics["reward"], iteration + 1)
+            writer.add_scalar("train/kl_loss", last_wm_metrics["kl"], iteration + 1)
+            writer.add_scalar("train/actor_loss", last_actor_loss, iteration + 1)
+            writer.add_scalar("train/critic_loss", last_critic_loss, iteration + 1)
+            writer.add_scalar("train/entropy", last_entropy, iteration + 1)
+            writer.add_scalar("train/return_10", recent_return, iteration + 1)
+            writer.add_scalar("train/replay_size", len(replay_buffer), iteration + 1)
 
         if (iteration + 1) % cfg.eval_freq == 0:
             eval_return = evaluation(eval_env, policy, cfg)
+            writer.add_scalar("eval/return", eval_return, iteration + 1)
             if eval_return > best_eval:
                 best_eval = eval_return
                 save_checkpoint()
@@ -443,6 +463,7 @@ def train(cfg: Config):
 
     env.close()
     eval_env.close()
+    writer.close()
     print("Training completed.")
     return policy
 
