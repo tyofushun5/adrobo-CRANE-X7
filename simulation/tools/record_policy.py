@@ -75,6 +75,7 @@ def record_episode(
         record=True,
         video_path=output,
         fps=fps,
+        record_cam_res=(64, 64),
     )
 
     ckpt_path = Path(checkpoint)
