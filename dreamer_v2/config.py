@@ -34,7 +34,7 @@ class Config:
     seed_iter: int = 1000
     eval_freq: int = 10
     eval_episodes: int = 5
-    pretrain_iters: int = 200
+    pretrain_iters: int = 100
     log_freq: int = 100
     image_size: int = 64
     seed: int = 1
