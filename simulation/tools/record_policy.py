@@ -11,14 +11,15 @@ from simulation.envs.custom_env import Environment
 from simulation.train.train import capture_observation
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-CHECKPOINT_PATH = ROOT_DIR / "simulation" / "train" / "dreamer_agent.pth"
+CHECKPOINT_DIR = ROOT_DIR / "simulation" / "train" / "model"
+CHECKPOINT_PATH = CHECKPOINT_DIR / "dreamer_agent.pth"
 DEFAULT_OUTPUT = "videos/preview.mp4"
 DEFAULT_STEPS = 200
 DEFAULT_FPS = 60
 DEFAULT_DEVICE = "cpu"
 DEFAULT_SHOW_VIEWER = False
 DEFAULT_DETERMINISTIC = False
-DEFAULT_CHECKPOINT = str(CHECKPOINT_PATH.with_name("dreamer_agent.pth"))
+DEFAULT_CHECKPOINT = str(CHECKPOINT_DIR / "dreamer_agent_iter10000.pth")
 
 
 def save_video(frames: list[np.ndarray], output: str, fps: int) -> None:
